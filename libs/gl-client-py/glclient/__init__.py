@@ -554,10 +554,9 @@ class Node(object):
 
     def get_lsp_client(
         self,
-        peer_id : bytes
     ) -> LspClient:
         native_lsps = self.inner.get_lsp_client()
-        return LspClient(native_lsps, peer_id)
+        return LspClient(native_lsps)
 
     def configure(self, close_to_addr: str) -> None:
         req = nodepb.GlConfig(
