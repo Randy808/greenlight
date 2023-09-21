@@ -28,6 +28,8 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::ServerTlsConfig, Code, Request, Response, Status};
 mod wrapper;
 pub use wrapper::WrappedNodeServer;
+use gl_client::bitcoin;
+use std::str::FromStr;
 
 static LIMITER: OnceCell<RateLimiter<NotKeyed, InMemoryState, MonotonicClock>> =
     OnceCell::const_new();
@@ -879,6 +881,67 @@ impl Node for PluginNodeServer {
         {
             Ok(v) => Ok(Response::new(v.into())),
             Err(e) => Err(Status::new(Code::Internal, e.to_string())),
+        }
+    }
+
+    async fn configure(&self, req: tonic::Request<pb::GlConfig>) -> Result<Response<pb::Empty>, Status>  {
+        self.limit().await;
+        let gl_config = req.into_inner();
+        let rpc = self.get_rpc().await;
+
+        let res: Result<crate::responses::GetInfo, crate::rpc::Error> =
+            rpc.call("getinfo", json!({})).await;
+
+        let network = match res {
+            Ok(get_info_response) => {
+                match get_info_response.network.parse() {
+                    Ok(v) => v,
+                    Err(_) => Err(Status::new(Code::Unknown, format!("The network returned from the call to 'getinfo' could not be parsed")))?,
+                }
+            }
+            Err(e) => {
+                return Err(Status::new(
+                    Code::Unknown,
+                    format!("Failed to retrieve a response from 'getinfo' while setting the node's configuration: {}", e),
+                ));
+            }
+        };
+    
+        match bitcoin::Address::from_str(&gl_config.close_to_addr) {
+            Ok(address) => {
+                if address.network != network {
+                    return Err(Status::new(
+                        Code::Unknown,
+                        format!(
+                            "Network mismatch: \
+                            Expected an address for {} but received an address for {}",
+                            network,
+                            address.network
+                        ),
+                    ));
+                }
+            }
+            Err(e) => {
+                return Err(Status::new(
+                    Code::Unknown,
+                    format!("The address {} is not valid: {}", gl_config.close_to_addr, e),
+                ));
+            }
+        }
+
+        let res: Result<crate::responses::DatastoreResponse, crate::rpc::Error> =
+            rpc.call("datastore", json!({
+                "key": vec![
+                    "glconf".to_string(),
+                    "channel".to_string(),
+                    "close_to_addr".to_string()
+                ],
+                "string": gl_config.close_to_addr,
+            })).await;
+
+        match res {
+            Ok(_) => Ok(Response::new(pb::Empty::default())),
+            Err(e) => Err(Status::new(Code::Unknown, e.to_string())),
         }
     }
 }

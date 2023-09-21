@@ -104,6 +104,7 @@ impl Signer {
         policy.filter.merge(PolicyFilter {
             // TODO: Remove once we have fully switched over to zero-fee anchors
             rules: vec![
+                FilterRule::new_warn("policy-mutual-destination-allowlisted"),
                 FilterRule::new_warn("policy-channel-safe-type-anchors"),
                 FilterRule::new_warn("policy-routing-balanced"),
             ],
