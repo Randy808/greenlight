@@ -128,6 +128,11 @@ class NodeStub(object):
                 request_serializer=greenlight__pb2.HsmResponse.SerializeToString,
                 response_deserializer=greenlight__pb2.Empty.FromString,
                 )
+        self.Configure = channel.unary_unary(
+                '/greenlight.Node/Configure',
+                request_serializer=greenlight__pb2.GlConfig.SerializeToString,
+                response_deserializer=greenlight__pb2.Empty.FromString,
+                )
 
 
 class NodeServicer(object):
@@ -329,6 +334,12 @@ class NodeServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Configure(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_NodeServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -430,6 +441,11 @@ def add_NodeServicer_to_server(servicer, server):
             'RespondHsmRequest': grpc.unary_unary_rpc_method_handler(
                     servicer.RespondHsmRequest,
                     request_deserializer=greenlight__pb2.HsmResponse.FromString,
+                    response_serializer=greenlight__pb2.Empty.SerializeToString,
+            ),
+            'Configure': grpc.unary_unary_rpc_method_handler(
+                    servicer.Configure,
+                    request_deserializer=greenlight__pb2.GlConfig.FromString,
                     response_serializer=greenlight__pb2.Empty.SerializeToString,
             ),
     }
@@ -792,6 +808,23 @@ class Node(object):
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/greenlight.Node/RespondHsmRequest',
             greenlight__pb2.HsmResponse.SerializeToString,
+            greenlight__pb2.Empty.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def Configure(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/greenlight.Node/Configure',
+            greenlight__pb2.GlConfig.SerializeToString,
             greenlight__pb2.Empty.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
