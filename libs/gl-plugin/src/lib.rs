@@ -104,6 +104,7 @@ pub async fn init(
         .hook("htlc_accepted", lsp::on_htlc_accepted)
         .hook("invoice_payment", on_invoice_payment)
         .hook("peer_connected", on_peer_connected)
+        .hook("openchannel2", on_openchannel2)
         .hook("custommsg", on_custommsg);
     Ok(Builder {
         state,
@@ -152,6 +153,32 @@ async fn on_peer_connected(plugin: Plugin, v: serde_json::Value) -> Result<serde
     let res = rpc.call_typed(req).await;
     debug!("Got datastore response: {:?}", res);
     Ok(json!({"result": "continue"}))
+}
+
+async fn on_openchannel2(plugin: Plugin, v: serde_json::Value) -> Result<serde_json::Value> {
+    debug!("Received an openchannel2 request: {:?}", v);
+    let mut rpc = cln_rpc::ClnRpc::new(plugin.configuration().rpc_file).await?;
+    let req = cln_rpc::model::requests::ListdatastoreRequest{
+        key: Some(vec![
+            "glconf".to_string(),
+            "channel".to_string(),
+            "close_to".to_string(),
+        ])
+    };
+
+    let res = rpc.call_typed(req).await;
+
+    debug!("openchannel2 response: {:?}", res);
+
+    match res {
+        Ok(r) => {
+            Ok(json!({"result": "continue", "close_to":  r.datastore[0].string}))
+        },
+        Err(e) => {
+            log::debug!("Error occurred while searching for close_to address: {}", e);
+            Ok(json!({"result": "continue"}))
+        }
+    }
 }
 
 /// Notification handler that receives notifications on incoming

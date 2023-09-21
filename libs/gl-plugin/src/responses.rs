@@ -334,6 +334,12 @@ pub struct ListFunds {
     pub channels: Vec<ListFundsChannel>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct  DatastoreResponse {
+	pub key: String,
+    pub string: String
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

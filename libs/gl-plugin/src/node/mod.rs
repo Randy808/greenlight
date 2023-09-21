@@ -880,6 +880,28 @@ impl Node for PluginNodeServer {
             Err(e) => Err(Status::new(Code::Internal, e.to_string())),
         }
     }
+
+    async fn configure(&self, req: tonic::Request<pb::GlConfig>) -> Result<Response<pb::Empty>, Status>  {
+        self.limit().await;
+        let gl_config = req.into_inner();
+
+        let rpc = self.get_rpc().await;
+
+        let res: Result<crate::responses::DatastoreResponse, crate::rpc::Error> =
+            rpc.call("datastore", json!({
+                "key": vec![
+                    "glconf".to_string(),
+                    "channel".to_string(),
+                    "close_to".to_string()
+                ],
+                "string": gl_config.close_to_addr,
+            })).await;
+
+        match res {
+            Ok(_) => Ok(Response::new(pb::Empty::default())),
+            Err(e) => Err(Status::new(Code::Unknown, e.to_string())),
+        }
+    }
 }
 
 use cln_grpc::pb::node_server::NodeServer;
