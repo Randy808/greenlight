@@ -295,31 +295,33 @@ impl Node for PluginNodeServer {
                 let list_datastore_req = cln_rpc::model::requests::ListdatastoreRequest{
                     key: Some(vec![
                         "glconf".to_string(),
-                        "channel".to_string(),
-                        "close_to_addr".to_string(),
+                        "request".to_string()
                     ])
                 };
 
-                let res: Result<cln_rpc::model::responses::ListdatastoreResponse, crate::rpc::Error> = rpc.call("listdatastore", list_datastore_req).await;
+                req.request.signer_state = state.into();
+                req.request.requests = ctx.snapshot().await.into_iter().map(|r| r.into()).collect();
 
+                let res: Result<cln_rpc::model::responses::ListdatastoreResponse, crate::rpc::Error> = rpc.call("listdatastore", list_datastore_req).await;
                 match res {
                     Ok(list_datastore_res) => {
                         if list_datastore_res.datastore.len() > 0 {
                             let serialized_configure_request = list_datastore_res.datastore[0].string.clone();
                             match serialized_configure_request {
                                 Some(serialized_configure_request) => {
-                                    let configure_request = serde_json::from_str::<crate::context::Request>(&serialized_configure_request).unwrap();
+                                    let configure_request = serde_json::from_str::<crate::context::Request>(
+                                        &serialized_configure_request,
+                                    )
+                                    .unwrap();
                                     req.request.requests.push(configure_request.into());
                                 }
                                 None => {}
                             }
                         }
-                    },
+                    }
                     Err(_) => {}
                 }
 
-                req.request.signer_state = state.into();
-                req.request.requests = ctx.snapshot().await.into_iter().map(|r| r.into()).collect();
                 debug!(
                     "Sending signer requests with {} requests and {} state entries",
                     req.request.requests.len(),
@@ -474,6 +476,26 @@ impl Node for PluginNodeServer {
                 "string": gl_config.close_to_addr,
             })).await;
 
+        let requests: Vec<crate::context::Request> = self.ctx.snapshot().await.into_iter().map(|r| r.into()).collect();
+        let serialized_req = serde_json::to_string(&requests[0]).unwrap();
+        let datastore_res: Result<crate::responses::DatastoreResponse, crate::rpc::Error> =
+            rpc.call("datastore", json!({
+                "key": vec![
+                    "glconf".to_string(),
+                    "request".to_string(),
+                ],
+                "string": serialized_req,
+            })).await;
+        
+        match datastore_res {
+            Ok(_) => {}
+            Err(e) => {
+                return Err(Status::new(
+                    Code::Unknown,
+                    format!("Failed to store the raw configure request in the datastore: {}", e),
+                ));
+            }
+        }
 
         match res {
             Ok(_) => Ok(Response::new(pb::Empty::default())),

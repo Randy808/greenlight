@@ -142,7 +142,7 @@ def test_configure_close_to_addr(node_factory, clients, bitcoind):
     bitcoind.generate_block(1, wait_for_mempool=1)
 
     wait_for(lambda:
-        gl1.list_peers().peers[0].channels[0].state == 'CHANNELD_NORMAL'
+        gl1.list_peers().peers[0].channels[0].state == 2
     )
     
     assert gl1.list_peers().peers[0].channels[0].close_to_addr == close_to_addr
