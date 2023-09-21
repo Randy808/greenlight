@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 use tokio::net::UnixStream;
 use tokio_util::codec::Framed;
+use tokio::time::{timeout, Duration};
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -31,12 +32,14 @@ pub enum Error {
 #[derive(Clone, Debug)]
 pub struct LightningClient {
     sockpath: PathBuf,
+    timeout: Duration,
 }
 
 impl LightningClient {
     pub fn new<P: AsRef<Path>>(sockpath: P) -> LightningClient {
         LightningClient {
             sockpath: sockpath.as_ref().to_path_buf(),
+            timeout: Duration::from_millis(4000)
         }
     }
 
@@ -70,14 +73,20 @@ impl LightningClient {
             return Err(Error::ClnRpcError(e));
         }
 
-        let response = match codec.next().await {
-            Some(Ok(v)) => v,
-            Some(Err(e)) => {
+        let read_timeout_result = timeout(self.timeout, codec.next()).await;
+
+        let response = match read_timeout_result {
+            Ok(Some(Ok(v))) => v,
+            Ok(Some(Err(e))) => {
                 warn!("Error from RPC: {:?}", e);
                 return Err(Error::ClnRpcError(e));
             }
-            None => {
+            Ok(None) => {
                 warn!("Error reading response from RPC interface, returned None");
+                return Err(Error::EmptyResult);
+            }
+            Err(_) => {
+                warn!("Error reading response from RPC, the request timed out");
                 return Err(Error::EmptyResult);
             }
         };

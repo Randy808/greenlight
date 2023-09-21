@@ -144,6 +144,8 @@ service Node {
 
 	rpc RespondHsmRequest(HsmResponse) returns (Empty) {}
 
+	rpc Configure(GlConfig) returns (Empty) {}
+
 }
 
 message HsmRequestContext {
@@ -603,6 +605,10 @@ message NodeConfig {
 	// from the signer. These are just request-response tuples
 	// that we use to match and reply against incoming requests.
 	repeated StartupMessage startupmsgs = 1;
+}
+
+message GlConfig {
+	string close_to_addr = 1;
 }
 
 // A message that we know will be requested by `lightningd` at
