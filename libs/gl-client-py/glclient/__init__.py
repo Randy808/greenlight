@@ -561,7 +561,7 @@ class Node(object):
 
     def configure(self, close_to: str) -> None:
         req = nodepb.GlConfig(
-            close_to=close_to
+            close_to_addr=close_to
         ).SerializeToString()
         
         return self.inner.configure(bytes(req))

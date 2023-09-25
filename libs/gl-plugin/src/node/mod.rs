@@ -886,7 +886,6 @@ impl Node for PluginNodeServer {
     async fn configure(&self, req: tonic::Request<pb::GlConfig>) -> Result<Response<pb::Empty>, Status>  {
         self.limit().await;
         let gl_config = req.into_inner();
-
         let rpc = self.get_rpc().await;
 
         let res: Result<crate::responses::GetInfo, crate::rpc::Error> =

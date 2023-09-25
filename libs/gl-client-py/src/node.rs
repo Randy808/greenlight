@@ -92,10 +92,12 @@ impl Node {
 
     fn configure(&self, payload: &[u8]) -> PyResult<()> {
         let req = pb::GlConfig::decode(payload).map_err(error_decoding_request)?;
+        println!("after deserialization from node.rs");
         
         exec(self.client.clone().configure(req))
             .map(|x| x.into_inner())
             .map_err(error_starting_stream)?;
+        println!("after call from node.rs");
 
         return Ok(());
     }

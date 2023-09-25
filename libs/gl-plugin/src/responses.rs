@@ -336,8 +336,10 @@ pub struct ListFunds {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct  DatastoreResponse {
-	pub key: String,
-    pub string: String
+	pub key: Vec<String>,
+    pub generation: Option<u64>,
+    pub hex: Option<String>,
+    pub string: Option<String>,
 }
 
 #[cfg(test)]

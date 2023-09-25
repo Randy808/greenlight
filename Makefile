@@ -89,7 +89,6 @@ docker-shell:
 	mkdir -p /tmp/gltesting/.cargo/.registry && \
 	docker run \
 		-ti \
-		--net=host \
 		--rm \
 		--cap-add=SYS_PTRACE \
 		-e TMPDIR=/tmp/gltesting/tmp \
@@ -97,7 +96,7 @@ docker-shell:
 		-e CARGO_TARGET_DIR=/tmp/gltesting/target \
 		-v /tmp/gltesting/.cargo/.registry:/home/$(shell whoami)/.cargo/registry/ \
 		-v ${REPO_ROOT}:/repo \
-		gltesting bash
+		gl bash
 
 docker-check-self:
 	docker run \

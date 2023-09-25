@@ -1,3 +1,4 @@
+#
 from gltesting.identity import Identity
 from gltesting.fixtures import *
 from pyln.testing.utils import wait_for
@@ -29,7 +30,8 @@ def test_node_connect(scheduler, clients, bitcoind):
     n = c.node()
     info = n.get_info()
     pprint(info)
-
+    breakpoint()
+    n.get_info()
 
 def test_node_signer(clients, executor):
     """Ensure we can attach a signer to the node and sign an invoice.
