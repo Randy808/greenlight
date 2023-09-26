@@ -764,7 +764,7 @@ mod tests {
                 .await
                 .unwrap_err()
                 .to_string(),
-            *"signer refused a request: ShortRead"
+            *"protocol error: ShortRead"
         )
     }
 
