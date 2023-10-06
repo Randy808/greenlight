@@ -71,4 +71,6 @@ pub enum Request {
     SetChannel(cln::SetchannelRequest),
     SignMessage(cln::SignmessageRequest),
     Stop(cln::StopRequest),
+    ListClosedChannels(cln::ListclosedchannelsRequest),
+    StaticBackup(cln::StaticbackupRequest),
 }
