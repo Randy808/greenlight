@@ -12,10 +12,18 @@ pub struct Signer {
 
 #[pymethods]
 impl Signer {
+
+    //Create a new signer using a secret, a network, and a tls config
     #[new]
     fn new(secret: Vec<u8>, network: String, tls: TlsConfig) -> PyResult<Signer> {
+
+        //Parse the string network into the bitcoin lib enum we have for network
         let network: Network = match network.parse() {
+
+            //Give an ok and return the parsed network
             Ok(network) => network,
+
+            //A blank error will return an error
             Err(_) => {
                 return Err(pyo3::exceptions::PyValueError::new_err(format!(
                     "Unknown / unsupported network {}",
@@ -24,9 +32,16 @@ impl Signer {
             }
         };
 
+        //Create a new gl_client signer with the secret, network, and tls config
         let inner = match gl_client::signer::Signer::new(secret, network, tls.inner) {
+
+            //If initialization gave an ok, give the parsed 'v'
             Ok(v) => v,
+
+            //If initialization gave an error
             Err(e) => {
+
+                //Return an error
                 return Err(pyo3::exceptions::PyValueError::new_err(format!(
                     "Error initializing Signer: {}",
                     e
@@ -34,6 +49,7 @@ impl Signer {
             }
         };
 
+        //Return the Signer from this file using the signer from the real gl-client as 'inner'
         Ok(Signer { inner })
     }
 

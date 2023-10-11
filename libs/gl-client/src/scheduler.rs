@@ -50,28 +50,42 @@ impl Scheduler {
         Self::with(node_id, network, uri, &tls).await
     }
 
+    //RANDY_COMMENTED
     pub async fn register(
         &self,
         signer: &Signer,
         invite_code: Option<String>,
     ) -> Result<pb::scheduler::RegistrationResponse> {
+        //Get the invite code
         let code = invite_code.unwrap_or_default();
+        //call the 'inner_register' on the signer and the invite code
         return self.inner_register(signer, code).await;
     }
 
+    //G
     /// We split the register method into one with an invite code and one
     /// without an invite code in order to keep the api stable. We might want to
     /// remove the invite system in the future and so it does not make sense to
     /// change the signature of the register method.
+    /// G_E
+
+    //RANDY_COMMENTED
+    //Gets the challenge using the scheduler client while passing in the node id,
+    // use the signer to sign it, and send the challenge and invite code to 'register'
     async fn inner_register(
         &self,
         signer: &Signer,
         invite_code: String,
     ) -> Result<pb::scheduler::RegistrationResponse> {
+        //log we're getting a challenge 
         log::debug!("Retrieving challenge for registration");
+
+        // Use the scheduler client to get the challenge using the
+        //node_id/pubkey from the signer (which only needed tlsconfig for initialization)
         let challenge = self
             .client
             .clone()
+            //Pass in the challenge 'scope' which is a protobuf model
             .get_challenge(pb::scheduler::ChallengeRequest {
                 scope: pb::scheduler::ChallengeScope::Register as i32,
                 node_id: self.node_id.clone(),
@@ -79,23 +93,37 @@ impl Scheduler {
             .await?
             .into_inner();
 
+        //log we got a response and log the response
         log::trace!("Got a challenge: {}", hex::encode(&challenge.challenge));
 
+        //Sign the challenge using the signer
         let signature = signer.sign_challenge(challenge.challenge.clone())?;
+        
+        //Generate the self signed cert passing in the node_id,
+        //'default' for device name, and 'localhost' for alt name
         let device_cert = tls::generate_self_signed_device_cert(
             &hex::encode(self.node_id.clone()),
             "default".into(),
             vec!["localhost".into()],
         );
+
+        //Serialize the cert
         let device_csr = device_cert.serialize_request_pem()?;
+
+        //log
         debug!("Requesting registration with csr:\n{}", device_csr);
 
+        //get startup messages from signer
         let startupmsgs = signer
             .get_startup_messages()
             .into_iter()
             .map(|m| m.into())
             .collect();
 
+        
+        //Use the scheduler client to register the signer info with the
+        //node id, invite code, network, signed challenge, signer init msg,
+        //etc
         let mut res = self
             .client
             .clone()
@@ -114,28 +142,50 @@ impl Scheduler {
             .await?
             .into_inner();
 
+        //G
         // This step ensures backwards compatibility with the backend. If we did
         // receive a device key, the backend did not sign the csr and we need to
         // return the response as it is. If the device key is empty, the csr was
         // signed and we return the client side generated private key.
+        //G_E
+
+        //If the device_key is empty in the registration response
         if res.device_key.is_empty() {
+
+            //Say we receive a device_cert instead
             debug!("Received signed certificate:\n{}", &res.device_cert);
+
+            //G
             // We intercept the response and replace the private key with the
             // private key of the device_cert. This private key has been generated
             // on and has never left the client device.
+            //G_END
+
+            //Use the private key from the device cert as the device key
             res.device_key = device_cert.serialize_private_key_pem();
         }
 
+        //G
         // We ask the signer for a signature of the public key to append the
         // public key to any payload that is sent to a node.
+        //G_END
+
+        //Get the public key from the device cert
         let public_key = device_cert.get_key_pair().public_key_raw();
+
+        //
         debug!(
             "Asking singer to sign public key {}",
             hex::encode(public_key)
         );
+
+        //Sign the device's public key
         let r = signer.sign_device_key(public_key)?;
+
+        //Log the signature
         debug!("Got signature: {}", hex::encode(r));
 
+        //Return an ok response with the challenge response
         Ok(res)
     }
 
@@ -197,10 +247,15 @@ impl Scheduler {
         Ok(res)
     }
 
+    //RANDY_COMMENTED
+    //Schedule the node using the node_id and return an 
+    //initialized node struct connected to this link
     pub async fn schedule<T>(&self, tls: TlsConfig) -> Result<T>
     where
         T: GrpcClient,
     {
+        //Create a scheduler client and schedule the node
+        //by sending in the node_id
         let sched = self
             .client
             .clone()
@@ -210,14 +265,21 @@ impl Scheduler {
             .await?
             .into_inner();
 
+        //Get the grpc uri from the schedule response
         let uri = sched.grpc_uri;
 
+        //Return a new node struct with the id, the network, and the tls, and 
+        //attach it to the uri returned by the schedule call
         node::Node::new(self.node_id.clone(), self.network, tls)
             .connect(uri)
             .await
     }
 
+    //RANDY_COMMENTED
+    //Call 'export_node' on the scheduler client and get an ExportNodeResponse
     pub async fn export_node(&self) -> Result<pb::scheduler::ExportNodeResponse> {
+        
+        //Return an Ok respponse with an empty ExportNodeRequest
         Ok(self
             .client
             .clone()
@@ -225,6 +287,7 @@ impl Scheduler {
             .await?
             .into_inner())
     }
+
 
     pub async fn get_invite_codes(&self) -> Result<pb::scheduler::ListInviteCodesResponse> {
         let res = self

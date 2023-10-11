@@ -329,7 +329,11 @@ def schedule(ctx):
 @click.pass_context
 def hsmd(ctx):
     """Run the hsmd against the scheduler."""
+    
+    #Create a signer using tls cert
     signer = Signer(Tls())
+    
+    #Tell the signer to run in the foreground
     signer_handle = signer.inner.run_in_thread()
     
     def signal_handler(_signal, _frame):

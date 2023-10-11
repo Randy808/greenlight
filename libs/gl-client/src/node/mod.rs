@@ -55,7 +55,11 @@ impl GrpcClient for ClnClient {
 }
 
 impl Node {
+
+    //RANDY_COMMENTED
+    //Create a new Node
     pub fn new(node_id: Vec<u8>, network: Network, tls: TlsConfig) -> Node {
+        //Return a Node initialized with a node_id, a network, and a tls config
         Node {
             node_id,
             network,
@@ -63,32 +67,57 @@ impl Node {
         }
     }
 
+    //RANDY_COMMENTED
+    //Initializes a tls cert depending on the node_uri and uses that tls service
+    //when establishing a grpc connection to the node
     pub async fn connect<C>(&self, node_uri: String) -> Result<C>
     where
         C: GrpcClient,
     {
+        //Create a Uri object from the node_uri string
         let node_uri = Uri::from_maybe_shared(node_uri)?;
+
+        //Log we're connecting to the node
         info!("Connecting to node at {}", node_uri);
 
+        //G
         // If this is not yet a node-domain address we need to also
         // accept "localhost" as domain name from the certificate.
+        //G_END
+
+        //Get the host from the node_uri
         let host = node_uri.host().unwrap();
+
+        //If the host starts with 'gl'
         let tls = if host.starts_with("gl") {
+            //log the host we're usin
             trace!(
                 "Using real hostname {}, expecting the node to have a matching certificate",
                 host
             );
+
+            //clone the tls config on the node
             self.tls.clone()
         } else {
+
+            //Log that we're 'overriding' a hostname since the host doesn't start with 'gl'
             trace!(
                 "Overriding hostname, since this is not a gl node domain: {}",
                 host
             );
+
+            //Get the tls config
             let mut tls = self.tls.clone();
+
+            //Set the tls config's inner to the domain name 'localhost' but does so
+            //non-mutably so returns a new tls inner.
             tls.inner = tls.inner.domain_name("localhost");
+
+            //Return the tls config
             tls
         };
 
+        //Match the tls private key and make an authlayer if present, error if the private key isn't
         let layer = match tls.private_key {
             Some(k) => service::AuthLayer::new(k)?,
             None => {
@@ -98,15 +127,23 @@ impl Node {
             }
         };
 
+        //Crete a tonic/grpc channel using the node_uri
         let chan = tonic::transport::Endpoint::from_shared(node_uri.to_string())?
+            //Set the tls config to tls inner
             .tls_config(tls.inner)?
             .tcp_keepalive(Some(crate::TCP_KEEPALIVE))
             .http2_keep_alive_interval(crate::TCP_KEEPALIVE)
             .keep_alive_timeout(crate::TCP_KEEPALIVE_TIMEOUT)
             .keep_alive_while_idle(true)
+            //connect to the node
             .connect_lazy();
+
+         //Use a service builder to add an auth layer and the channel as the servuce
+        //This service is a 'tower' service which is an abstraction/interface that 
+        //networking clients and servers can use to implement generically created middlewares
         let chan = ServiceBuilder::new().layer(layer).service(chan);
 
+        //Return a new grpclient that uses the 'chan' that was just built
         Ok(C::new_with_inner(chan))
     }
 

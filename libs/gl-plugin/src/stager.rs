@@ -1,7 +1,11 @@
+//G
 /// A simple staging mechanism for incoming requests so we can invert from
 /// pull to push. Used by `hsmproxy` to stage requests that can then
 /// asynchronously be retrieved and processed by one or more client
 /// devices.
+//G_E
+
+
 use crate::pb;
 use anyhow::{anyhow, Error};
 use log::{debug, trace, warn};
@@ -12,6 +16,8 @@ use std::sync::{
 };
 use tokio::sync::{broadcast, mpsc, Mutex};
 
+//Creates a struct with a hashmap of ids to requests, a notification sender,
+//and hsm connection ids
 #[derive(Debug)]
 pub struct Stage {
     requests: Mutex<collections::HashMap<u32, Request>>,
@@ -19,6 +25,8 @@ pub struct Stage {
     hsm_connections: Arc<AtomicUsize>,
 }
 
+//Create a struct called request which contains a protobuf hsm request 
+//and a hsm response of type mspc sender (?)
 #[derive(Clone, Debug)]
 pub struct Request {
     pub request: pb::HsmRequest,
@@ -26,66 +34,114 @@ pub struct Request {
 }
 
 impl Stage {
+
+
+    //Create a new stage using new values for each field
     pub fn new() -> Self {
+        //Create a channel with a 1000 byte capacity but only save a sender
         let (notify, _) = broadcast::channel(1000);
+
+        //Return a stage
         Stage {
+            //Create a new hashmap for requests
             requests: Mutex::new(collections::HashMap::new()),
+            //Add the newly-created notify sender to the stage
             notify: notify,
+            //Set the hsm connections to a pointer to an atomic usize
             hsm_connections: Arc::new(AtomicUsize::new(0)),
         }
     }
 
+    //Create a new channel and wrap the channel sender, and the request arg into to 'r',
+    //then add r to requests and use the notify to send the request
+    // and return the channel receiver to the caller.
+
+    //So creates a new channel sender and receiver,
+    //and adds the sender to a newly initialized request put in the request queue,
+    // and returns a receiver for the caller to subscribe to 
     pub async fn send(
         &self,
         request: pb::HsmRequest,
     ) -> Result<mpsc::Receiver<pb::HsmResponse>, Error> {
+        //Lock and extract the requests from the stager
         let mut requests = self.requests.lock().await;
+
+        //Create a channel of buffer 1 and capture the sender as response,
+        // and receiver as receiver
         let (response, receiver): (
             mpsc::Sender<pb::HsmResponse>,
             mpsc::Receiver<pb::HsmResponse>,
         ) = mpsc::channel(1);
 
+        //Create a Request from the hsm request and the channel response
         let r = Request { request, response };
 
+        //Insert this newly created request into requests
         requests.insert(r.request.request_id, r.clone());
 
+        //If there was an error sending the created request in the notify stream
         if let Err(_) = self.notify.send(r) {
+            //log the error
             warn!("Error notifying hsmd request stream, likely lost connection.");
         }
 
+        //return the receiver to the created channel
         Ok(receiver)
     }
 
+    //Give a stage stream with the backlog of requests, a way to connect to notify, and the hsm connections
     pub async fn mystream(&self) -> StageStream {
+        //Lock the mutex and get the requests
         let requests = self.requests.lock().await;
+        //Call fetch_add to add '1' to the number of hsmc connections
         self.hsm_connections.fetch_add(1, Ordering::Relaxed);
+
         StageStream {
+            //Get the request values and clone them all to create a backlog
             backlog: requests.values().map(|e| e.clone()).collect(),
+
+            //Create a new subscription to the broadcast
             bcast: self.notify.subscribe(),
+
+            //Clone the hsm connections
             hsm_connections: self.hsm_connections.clone(),
         }
     }
 
+    //Remove the request associated with the response in the argument, and use that
+    //removed request to send the arg_response back to the requester
     pub async fn respond(&self, response: pb::HsmResponse) -> Result<(), Error> {
+        //Get the requests from the locked-mutex 
         let mut requests = self.requests.lock().await;
+
+        //Match the result of removing the response in the argument from the requests
         match requests.remove(&response.request_id) {
+            //If it was removed
             Some(req) => {
+
+                //log that it was removed
                 debug!(
                     "Response for request_id={}, outstanding requests count={}",
                     response.request_id,
                     requests.len()
                 );
+
+                //And try to send the response using the request's responder (aka 'req.response')
                 if let Err(e) = req.response.send(response).await {
+                    //Error out if the resoinse couldn't send
                     Err(anyhow!("Error sending request to requester: {:?}", e))
                 } else {
+                    //Give Ok otherwise
                     Ok(())
                 }
             }
             None => {
+                //log that the request was not found otherwise
                 trace!(
                     "Request {} not found, is this a duplicate result?",
                     response.request_id
                 );
+                //return ok
                 Ok(())
             }
         }

@@ -41,31 +41,44 @@ where
         Self { inner }
     }
 
+    //RANDY_COMMENTED
+
     pub async fn call(
         &mut self,
         path: &str,
         payload: Vec<u8>,
     ) -> Result<tonic::Response<bytes::Bytes>, tonic::Status> {
+
+        //Log the call along with the associated bytes of payload
         trace!(
             "Generic call to {} with {}bytes of payload",
             path,
             payload.len()
         );
 
+        //Call the inner 'T' value's (which is 'service::AuthService' in practice) 'ready' method
         self.inner.ready().await.map_err(|e| {
+
+            //If there's an error then return a tonic status with the code 'unknown' and just the
+            //message that the service wasn't ready
             tonic::Status::new(
                 tonic::Code::Unknown,
                 format!("Service was not ready: {}", e.into()),
             )
         })?;
 
+        //Get the path and query
         let path = http::uri::PathAndQuery::from_str(path).unwrap();
+
+        //Call 'unary' on the payload wrapped in a tonic request, the path, and the CODEC
         self.inner
             .unary(tonic::Request::new(payload), path, CODEC)
             .await
     }
 
+    //G
     // TODO Add a `streaming_call` for methods that return a stream to the client
+    //G_E
 }
 
 /// `tonic::client::Grpc<T>` requires a codec to convert between the

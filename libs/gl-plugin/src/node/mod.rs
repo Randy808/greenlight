@@ -267,26 +267,54 @@ impl Node for PluginNodeServer {
         }
     }
 
+    //RANDY_COMMENTED
+    //Create a stream, read a request from the stage, add the signer state and context info to it,
+    //and forward the request using the outgoing stream. Then do some connecting of the peers using
+    //datastore and node info, and return the receive of the stream.
+
+    //So this function attaches one end of a stream to the stage from the nde, and returns the other end
     async fn stream_hsm_requests(
         &self,
         _request: Request<pb::Empty>,
     ) -> Result<Response<Self::StreamHsmRequestsStream>, Status> {
+
+        //Get the hsm id count 'AtomicUsize' and add '1' to the value 
+        //(prev val is returned and overflows are taken care of in 'fetch_add')
         let hsm_id = HSM_ID_COUNT.fetch_add(1, Ordering::SeqCst);
+
+        //Add 1 to signer count?
+        //REVISIT
         SIGNER_COUNT.fetch_add(1, Ordering::SeqCst);
+
+        //Log that we have a new sigher with hsm id 'hsm_id'
         info!(
             "New signer with hsm_id={} attached, streaming requests",
             hsm_id
         );
 
+        //Create a 10 byte(?) buffer in a channel
         let (tx, rx) = mpsc::channel(10);
+
+        //Create a stream using the stage
+        //We send things into the stream from 'libs/gl-plugin/src/hsm.rs::request'
         let mut stream = self.stage.mystream().await;
+
+        //Get the signer state
         let signer_state = self.signer_state.clone();
+
+        //Clone the context
         let ctx = self.ctx.clone();
 
+        //Spawn an async func
         tokio::spawn(async move {
+
+            //Show the hsm id
             trace!("hsmd hsm_id={} request processor started", hsm_id);
 
+            //CHANGE: Added a signer heartbeat
+
             {
+                //G
                 // We start by immediately injecting a
                 // vls_protocol::Message::GetHeartbeat. This serves two
                 // purposes: already send the initial snapshot of the
@@ -295,9 +323,15 @@ impl Node for PluginNodeServer {
                 // incremental mode this ensures that any subsequent,
                 // presumably time-critical messages, do not have to carry
                 // the large state with them.
+                //G_END
 
+                //Lock the signer state and clone it
                 let state = signer_state.lock().await.clone();
+
+                //Turn the state into a signer state entry
                 let state: Vec<gl_client::pb::SignerStateEntry> = state.into();
+
+                //Get a signer state entry vec by converting to internal signer state
                 let state: Vec<pb::SignerStateEntry> = state
                     .into_iter()
                     .map(|s| pb::SignerStateEntry {
@@ -307,11 +341,18 @@ impl Node for PluginNodeServer {
                     })
                     .collect();
 
+                //init a heartbeat msg
                 let msg = vls_protocol::msgs::GetHeartbeat {};
+
+                //use vls ser
                 use vls_protocol::msgs::SerBolt;
+
+                //create hsm req using the signer state and heartbeat msg
                 let req = crate::pb::HsmRequest {
+                    //B
                     // Notice that the request_counter starts at 1000, to
                     // avoid collisions.
+                    //B_END
                     request_id: 0,
                     signer_state: state,
                     raw: msg.as_vec(),
@@ -319,13 +360,18 @@ impl Node for PluginNodeServer {
                     context: None,
                 };
 
+                //Send this req using same tx we prev only for requests
                 if let Err(e) = tx.send(Ok(req)).await {
                     log::warn!("Failed to send heartbeat message to signer: {}", e);
                 }
             }
 
+            //Loop forever
             loop {
+
+                //Wait for the next thing on the stage stream
                 let mut req = match stream.next().await {
+                    //If there's an error then say we couldn't get the request for the stage
                     Err(e) => {
                         error!(
                             "Could not get next request from stage: {:?} for hsm_id={}",
@@ -333,18 +379,29 @@ impl Node for PluginNodeServer {
                         );
                         break;
                     }
+
+                    //Return the request from the stream otherwise
                     Ok(r) => r,
                 };
+
+                //Log what request we're sending
                 trace!(
                     "Sending request={} to hsm_id={}",
                     req.request.request_id,
                     hsm_id
                 );
 
+                //clone the signer state
                 let state = signer_state.lock().await.clone();
+
+                //Change the signer state into 
                 let state: Vec<gl_client::pb::SignerStateEntry> = state.into();
 
+                //G
                 // TODO Consolidate protos in `gl-client` and `gl-plugin`, then remove this map.
+                //G_END
+
+                //Turn the state into an iterator and convert each state iinto a signer state entry
                 let state: Vec<pb::SignerStateEntry> = state
                     .into_iter()
                     .map(|s| pb::SignerStateEntry {
@@ -354,9 +411,14 @@ impl Node for PluginNodeServer {
                     })
                     .collect();
 
+                //Turn the vec of signer state entries into the req's request signer_state
                 req.request.signer_state = state.into();
+
+                //get the context snapshot and put it into requests
                 req.request.requests = ctx.snapshot().await.into_iter().map(|r| r.into()).collect();
 
+                //REVISIT
+                //REVISIT_RANDY
                 let serialized_configure_request = SERIALIZED_CONFIGURE_REQUEST.lock().await;
 
                 match &(*serialized_configure_request) {
@@ -370,33 +432,50 @@ impl Node for PluginNodeServer {
                     None => {}
                 }
 
+                //Log the number of signer requests and state entries
                 debug!(
                     "Sending signer requests with {} requests and {} state entries",
                     req.request.requests.len(),
                     req.request.signer_state.len()
                 );
 
+                //If there's an error while sending the request to the channel made earlier
                 if let Err(e) = tx.send(Ok(req.request)).await {
+                    //error out and break
                     warn!("Error streaming request {:?} to hsm_id={}", e, hsm_id);
                     break;
                 }
             }
+
+            //otherwise just log that the hsm send ended
             info!("Signer hsm_id={} exited", hsm_id);
             SIGNER_COUNT.fetch_sub(1, Ordering::SeqCst);
         });
 
+        //log that we're returning the stream hsm request channel
         trace!("Returning stream_hsm_request channel");
         Ok(Response::new(ReceiverStream::new(rx)))
     }
 
+    //RANDY_COMMENTED
+    //Receives a request, extracts its signer state, merges it with the
+    //plugin's local signer state, and saves it to the signer state store
     async fn respond_hsm_request(
         &self,
         request: Request<pb::HsmResponse>,
     ) -> Result<Response<pb::Empty>, Status> {
+
+        //Change the request into it's inner 'hsmresponse' type
         let req = request.into_inner();
+
+        //G
         // Create a state from the key-value-version tuples. Need to
         // convert here, since `pb` is duplicated in the two different
         // crates.
+        //G_END
+
+        //Get the signer_state from the request sent to us by collecting
+        //each 'SignerStateEntry' in the signer_state property
         let signer_state: Vec<gl_client::pb::SignerStateEntry> = req
             .signer_state
             .iter()
@@ -406,19 +485,34 @@ impl Node for PluginNodeServer {
                 version: i.version,
             })
             .collect();
+
+        //Turn the signer state into a 'persist' State
         let new_state: gl_client::persist::State = signer_state.into();
 
         {
+            //G
             // Apply state changes to the in-memory state
+            //G_E
+
+            //Mutex lock the signer state of this plugin
             let mut state = self.signer_state.lock().await;
+
+            //Merge the signer state of plugin with signer state from
+            //processed request
             state.merge(&new_state).map_err(|e| {
+                //map an error if one exists
                 Status::new(
                     Code::Internal,
                     format!("Error updating internal state: {e}"),
                 )
             })?;
 
+            //G
             // Send changes to the signer_state_store for persistence
+            //G_END
+
+            //Write the new cloned, plugin-local signer state to 
+            //the signer_state_stire
             self.signer_state_store
                 .lock()
                 .await
@@ -432,9 +526,12 @@ impl Node for PluginNodeServer {
                 })?;
         }
 
+        //Send the processed request to the stage
         if let Err(e) = self.stage.respond(req).await {
             warn!("Suppressing error: {:?}", e);
         }
+
+        //Return an empty response
         Ok(Response::new(pb::Empty::default()))
     }
 
@@ -578,11 +675,18 @@ impl PluginNodeServer {
         let mut rpc = cln_rpc::ClnRpc::new(self.rpc_path.clone()).await?;
         let peers = self.get_reconnect_peers().await?;
 
+        //for every request in the peer requests
         for r in peers {
+            //log that we're gonna call connect on the peer
             trace!("Calling connect: {:?}", &r.id);
+
+            //call connect on the cln node
             let res = rpc.call_typed(r.clone()).await;
+
+            //log what the response to the connect call did
             trace!("Connect returned: {:?} -> {:?}", &r.id, res);
 
+            //match the response and log whether it was successful or not
             match res {
                 Ok(r) => info!("Connection to {} established: {:?}", &r.id, r),
                 Err(e) => warn!("Could not connect to {}: {:?}", &r.id, e),
@@ -591,11 +695,22 @@ impl PluginNodeServer {
         return Ok(());
     }
 
+    //RANDY_COMMENTED
     async fn get_reconnect_peers(
         &self,
     ) -> Result<Vec<cln_rpc::model::requests::ConnectRequest>, Error> {
+
+        //G
+        // Now that we have an hsmd we can actually reconnect to our peers
+        //G_END
+
+        //Get rpc path
         let rpc_path = self.rpc_path.clone();
+        
+        //Match the cln rpc made with the rpc path
         let mut rpc = cln_rpc::ClnRpc::new(rpc_path).await?;
+        
+        //Use the rpc conn to call list peers by inspecting the request type (ListpeersRequest here)
         let peers = rpc
             .call_typed(cln_rpc::model::requests::ListpeersRequest {
                 id: None,
@@ -603,6 +718,8 @@ impl PluginNodeServer {
             })
             .await?;
 
+        //Unwrap the response's peers and filteronlt the connected ones and convert
+        //the peer ids into connect requets.
         let mut requests: Vec<cln_rpc::model::requests::ConnectRequest> = peers
             .peers
             .iter()
@@ -615,16 +732,21 @@ impl PluginNodeServer {
             .collect();
 
         let mut dspeers: Vec<cln_rpc::model::requests::ConnectRequest> = rpc
+            //Call list data store
             .call_typed(cln_rpc::model::requests::ListdatastoreRequest {
                 key: Some(vec!["greenlight".to_string(), "peerlist".to_string()]),
             })
             .await?
+             //unwrap the data store requests and map them into peers if possible,
+            //and then more connect requests?
             .datastore
             .iter()
             .map(|x| {
+                //G
                 // We need to replace unnecessary escape characters that
                 // have been added by the datastore, as serde is a bit
                 // picky on that.
+                //G_END
                 let mut s = x.string.clone().unwrap();
                 s = s.replace('\\', "");
                 serde_json::from_str::<messages::Peer>(&s).unwrap()
@@ -636,9 +758,17 @@ impl PluginNodeServer {
             })
             .collect();
 
+         //G
         // Merge the two peer lists;
+        //G_END
+
+        //append the datastore peers onto the peers we got from the cln node
         requests.append(&mut dspeers);
+
+        //sort the peers
         requests.sort_by(|a, b| a.id.cmp(&b.id));
+
+        //deduplicate any peers
         requests.dedup_by(|a, b| a.id.eq(&b.id));
 
         Ok(requests)

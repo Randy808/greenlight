@@ -18,23 +18,44 @@ pub struct Node {
 
 #[pymethods]
 impl Node {
+
+    //RANDY_COMMENTED
+    //Uses the gl-client core Node *just* to initialize the protobuf Node clients
+    //and return them
     #[new]
     fn new(node_id: Vec<u8>, network: String, tls: TlsConfig, grpc_uri: String) -> PyResult<Self> {
+        //Parses the network from a string to that of one from the bitcoin lib
+        //and returns err out on failure
         let network: Network = match network.parse() {
             Ok(v) => v,
             Err(_) => return Err(PyValueError::new_err("unknown network")),
         };
 
+        //Create a gl-client Node as 'inner'
         let inner = gl::node::Node::new(node_id.clone(), network, tls.inner);
 
+        //G
         // Connect to both interfaces in parallel to avoid doubling the startup time:
-
         // TODO: Could be massively simplified by using a scoped task
         // from tokio_scoped to a
+        //G_END
+
+        //G
+        // TODO: Could be massively simplified by using a scoped task
+        // from tokio_scoped to a
+        //G_END
+
+        //Create a client and a gclient from the execution of this code block
         let (client, gclient, cln_client, ) = exec(async {
+
+        //clone the 'inner'
             let i = inner.clone();
+            //clone the grpc uri
             let u = grpc_uri.clone();
+            //and make a thread awaiting the future that will return a connection to the node
             let h1 = tokio::spawn(async move { i.connect(u).await });
+
+            //Repeat the above
             let i = inner.clone();
             let u = grpc_uri.clone();
             let h2 = tokio::spawn(async move { i.connect(u).await });
@@ -42,12 +63,14 @@ impl Node {
             let u = grpc_uri.clone();
             let h3 = tokio::spawn(async move { i.connect(u).await });
 
+            //Return 'Ok' with the connections
             Ok::<(gl::node::Client, gl::node::GClient, gl::node::ClnClient), anyhow::Error>((h1.await??, h2.await??, h3.await??))
         })
         .map_err(|e| {
             pyo3::exceptions::PyValueError::new_err(format!("could not connect to node: {}", e))
         })?;
 
+        //Return a current instance of this node with the grpc connected clients
         Ok(Node { client, gclient, cln_client })
     }
 

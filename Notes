@@ -1,0 +1,162 @@
+gl_client_js->index.js makes a class named Node that has a method named 'call'. It calls the imported function 'nodeCall' which comes from the rust file's lib.rs (in the gl-client-js folder) which uses node.rs's Node::call.
+
+gl-client/src/node/mod.rs has the impl of that 'Client' used in index.js (see the mod.rs line that uses 'pub type Client = NodeClient<service::AuthService>;')
+
+
+Command line interface of glcli is defined in tools/glcli
+
+The glcli/cli.py file calls functions from gl-client-py/glclient/__init__.py (like scheduler.node()). __init__.py uses methods from glclient by importing all functions witin the object 'native'.
+
+Add a method to  core client, add a proxy to it in the rust code in gl-client-py/src, make another way to call it in gl-client-py/glclient/__init__.py, and finally call it from the glcli/cli.py file
+
+======
+
+__init__.py has Node.pay which gets the inner node from the native object defined in glclient.pyi.
+That calls the node.rs code in glclientpy eventually which uses glclient code in it's 'call' method:
+
+    fn call(&self, method: &str, payload: Vec<u8>) -> PyResult<Vec<u8>> {
+        exec(self.gclient.clone().call(method, payload))
+            .map(|x| x.into_inner().to_vec())
+            .map_err(|s| PyValueError::new_err(format!("Error calling {}: {}", method, s)))
+    }
+    
+I think the glclient is calling the node from gl-plugin
+
+  -add a folder for lnurl to gl-client and initialize and call it from gl-client-py's node.rs. Then call the node.rs code from __init__.py
+
+  '''
+  root@e70cd6deaacf:/repo/libs/gl-client-py# maturin build --release --strip --out ./dist
+  root@e70cd6deaacf:/repo/tools/glcli# poetry build
+  root@e70cd6deaacf:/repo/tools/glcli# pip install dist/glcli-0.1.8-py3-none-any.whl --force-reinstall
+  
+  #see where site packages are
+  root@e70cd6deaacf:/repo/tools/glcli# pip show glcli
+  
+  #to see binaries you can just read the prompt on uninstall
+  
+  INSTALL THE WHL FROM THE GL-CLIENT-PY FOLDER LAST
+
+  randy@docker-desktop: pip install gl_client-0.1.9-cp37-abi3-manylinux_2_31_x86_64.whl --force-reinstall
+  
+  
+  ---
+  BUILD-SELF DOES NOT INSTALL GL-CLIENT-PY
+  -----
+
+
+  '''
+  
+  '''
+  Use  node.proto for models, not greenlight.proto
+  09/25/23 - Correction, always use greenlight.proto for gl specific functionality and never use node.proto
+  '''
+  
+  The glplugin node wrapper has a function called 'datastore' that calls the inner 'cln_grpc's datastore
+  
+__init__.py-> glclient.py->glclientpy::node.rs->
+
+/********/
+
+Makefile changes needed to compile the protobuf files:
+  
+  PYPROTOC_OPTS = \
+	--proto_path=/repo/libs/proto \
+	--python_out=${PYDIR}/glclient \
+	--grpc_python_out=${PYDIR}/glclient \
+	--experimental_allow_proto3_optional
+ 
+ /*abs path *prob* works?*/
+ PROTOSRC = \
+	../proto/scheduler.proto \
+	../proto/greenlight.proto \
+	../proto/node.proto
+
+t:
+  
+Call 'make pygrpc'
+  
+/********/
+
+greenlight.proto has the message formats and is used to generate the pyi files that can then be included in __init__.py. glclient is a different protobuf file that's defined by our (custom?) pyi file (I mean we have to build to Rust code to be available from python somewhere)
+
+/*****/
+
+make pygrpc makes python file bindings to rpc protobufs
+
+Rust includes the proto files directly in the code using tonic(see pb.rs). Top level messages are accessible through the root import while services are available through 'service_client::ServiceClient' (ex: 'use node_client::NodeClient')
+
+The NodeClient in the python's mod.rs is represented as 'client' while the generic rpc client is 'gclient' (represented in gl-core's generic.rs).
+
+Node.proto file methods are used in signer files. I guess because the signer has to recognize different requests and provide auth?
+
+hsmd is initialized to receive on a 1 buffer channel 'mpsc::channel(1)' in signer.rs (in gl-client-py and a duplicated signer in gl-client-js). This channel is also used in 'send' within the stager. In the hsm's 'run' and in the subsequent child invocation of the signer's 'run_forever_*', the signer connects to the node. The signer then runs 'run_once'. It calls 'stream_hsm_requests' on a node client whose rpc is found in greenlight.rs (the rust package). The only definition I can find for this is in gl-plugin.
+
+Since the plugin is started on the node, are the plugin methods automatically exposed on the actual lightning node? In 'run_once' it's constantly calling 'process_request' from there. So it seems the signer connects to the node in 'run_once' , streams requests using 'stream_hsm_requests', and uses 'process_request' on the requests.
+
+There is a proxy on the node that intercepts requests and queues them up in a plugin that the signer then streams messages from. The plugin processing requests is in gl-plugin/src/hsm.rs
+
+
+Put startup commands in gl-plugin/src/node/mod.rs, that's where peer initialization is done (see stream_hsm_requests).
+
+Can we make signer a trait and just use generics? Breez just uses an out of the box GL signer:
+  /Users/randy/Projects/breez-sdk/libs/sdk-core/src/greenlight/node_api.rs:55
+  
+  
+^^^^^^^^^^
+
+>hsmproxy.rs connects to the same HSMD_SOCK_PATH as the plugin made and streams events to the plugin-> 
+
+>plugin (hsm.rs::request which is the hsm plugin 'StagingHsmServer')->
+stage
+
+>stage is read from plugin method 'stream_hsm_requests'
+
+>hsmproxy.rs receives the response eventually from 'process_requests' and forwards it to the node
+
+CLIENT
+>signer connects to node and calls plugin 'stream_hsm_requests' on the signer and calls 'respond_hsm_request' after request is processed
+
+staginghsmserver gets started in plugins.rs while hsmproxy has its own binary
+  
+  
+Remember:
+StagingHsmServer and request
+stage and send
+
+*'start_handler' in hsmproxy is initialized by 'run' but is called repeatedly in the 'run' method using start_handler
+
+---
+
+close_to
+
+The Node in gl-client is only used to setup the grpc clients in the python sdk's node.rs.
+
+To add a 'configure' method I'd need to add it on to the python's node.rs, less I change the grpc client interface to add 'configure' and make it mainly server side (which is undesirable). If I use the grpc client in the python sdk's node.rs, I need to import the data types needed to store something in the data store using the cln_client rpc. I don't know if the python client has access to this.
+  
+  
+  
+  
+  ---
+  
+bad formatting:
+/Users/randy/proj/greenlight/libs/gl-client/src/signer/mod.rs:525
+Indentation after run_once semicolon.
+
+/Users/randy/Projects/greenlight/libs/gl-client-py/src/node.rs:41
+Bad indentation on the 'TODO' (actually may be just my file)
+
+
+----
+
+
+bitcoin-cli -regtest -rpcconnect=localhost:58003 -rpcuser=rpcuser -rpcpassword=rpcpass getbalance
+
+bitcoin-cli -regtest -rpcconnect=localhost:45203 -rpcuser=rpcuser -rpcpassword=rpcpass getbalance
+
+bitcoin-cli -regtest -rpcconnect=127.0.0.1:50869 -rpcuser=rpcuser -rpcpassword=rpcpass getbalance
+
+
+
+lightning-cli --lightning-dir=/tmp/gltesting/tmp/tmp2gpgx20s/node-0 --network=regtest --log-level=debug --bitcoin-rpcuser=rpcuser --bitcoin-rpcpassword=rpcpass --bitcoin-rpcconnect=localhost:38261
+
+lightning-cli --lightning-dir=/tmp/gltesting/tmp/tmpfkfoc_3d/node-0 --network=regtest listdatastore

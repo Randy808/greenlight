@@ -88,8 +88,13 @@ class Scheduler(object):
         res = schedpb.ExportNodeResponse
         return res.FromString(bytes(self.inner.export_node()))
 
+    #RANDY_COMMENTED
+    #Gets the node
     def node(self) -> "Node":
+        #schedules the node
         res = self.schedule()
+        
+        #instantiates the node with the node id, network, and tls cert
         return Node(
             node_id=self.node_id,
             network=self.network,

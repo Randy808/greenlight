@@ -16,16 +16,30 @@ use ring::{
     signature::{self, EcdsaKeyPair},
 };
 
+//A struct for the auth layer that takes a key as a sequence of bytes
 pub struct AuthLayer {
     key: Vec<u8>,
 }
 
+//Implement AuthLayer
 impl AuthLayer {
+
+    //RANDY_COMMENTED
+    //Create a new authlayer by validating the key 
+    //is a valid pkcs8 private key that can create ecdsa keypairs
     pub fn new(pem: Vec<u8>) -> Result<Self> {
+
+        //G
         // Try to convert the key into a keypair to make sure it works later
         // when we need it.
+        //G_END
+
+
         let key = {
+            //Create a key using a cursor to the pem file
             let mut key = std::io::Cursor::new(&pem[..]);
+
+            //match the key bytes parsed as pemfile and return the unwrappd result or an error
             match pemfile::pkcs8_private_keys(&mut key) {
                 Ok(v) => v,
                 Err(e) => {
@@ -35,14 +49,17 @@ impl AuthLayer {
                     ))
                 }
             }
+            //I'm not sure what this is here for
             .remove(0)
         };
 
+        //Create a ecdsa key paur and log that we can or retur an error that we can't
         match EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_FIXED_SIGNING, key.as_ref()) {
             Ok(_) => trace!("Successfully decoded keypair from PEM string"),
             Err(e) => return Err(anyhow!("Could not decide keypair from PEM string: {}", e)),
         };
 
+        //return the auth layer with the key bytes
         Ok(AuthLayer { key })
     }
 }

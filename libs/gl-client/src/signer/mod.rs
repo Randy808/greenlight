@@ -37,17 +37,35 @@ mod resolve;
 const VERSION: &str = "v23.08";
 const GITHASH: &str = env!("GIT_HASH");
 
+
+//RANDY_COMMENTED
+//Declare a struct for the signer that takes ina  secret, node services, the tls config, and an id
 #[derive(Clone)]
 pub struct Signer {
+
+    //A 32 byte secret
     secret: [u8; 32],
+
+    //The node services supported?
     services: NodeServices,
+
+    //The tls config
     tls: TlsConfig,
+
+    //An id (for?)
     id: Vec<u8>,
 
+    //G
     /// Cached version of the init response
+    //F_E
+
+    //A sequence of bytes
     init: Vec<u8>,
 
+    //The network we're operating on
     network: Network,
+
+    //A state represented as a 'persist' state
     state: Arc<Mutex<crate::persist::State>>,
 }
 
@@ -85,20 +103,36 @@ pub enum Error {
 }
 
 impl Signer {
+
+    //Return a Signer with a simple validator factory with policy 
+    //and clocks (from VLS) wrapped in variable 'services', and return
+    //the signer containing the secret, etc.
     pub fn new(secret: Vec<u8>, network: Network, tls: TlsConfig) -> Result<Signer, anyhow::Error> {
+        //Pull in VLS dependencies
         use lightning_signer::policy::{
             filter::PolicyFilter, simple_validator::SimpleValidatorFactory,
         };
         use lightning_signer::signer::ClockStartingTimeFactory;
         use lightning_signer::util::clock::StandardClock;
 
+        //Log the (hardcoded) version of VLS
         info!("Initializing signer for {VERSION} ({GITHASH}) (VLS)");
+
+        //Create a 32 byte array to store the secret
         let mut sec: [u8; 32] = [0; 32];
+
+        //copy the secret from the argument into this mutable sec byte array
         sec.copy_from_slice(&secret[0..32]);
 
+        //G
         // The persister takes care of persisting metadata across
         // restarts
+        //G_E
+
+        //Create a new memory persister wrapped by an Arc
         let persister = Arc::new(crate::persist::MemoryPersister::new());
+
+        //Create a mutable policy using 'make_simple_policy' on the network argument
         let mut policy = lightning_signer::policy::simple_validator::make_simple_policy(network);
 
         policy.filter = PolicyFilter::default();
@@ -118,10 +152,18 @@ impl Signer {
         // presplitter which was causing the HTLCs to be smaller.
         policy.max_routing_fee_msat = 1_000_000;
 
+
+        //Create a simple validator factory with the policy (and optional filter) made above
         let validator_factory = Arc::new(SimpleValidatorFactory::new_with_policy(policy));
+
+        //Create a clock starting time factory (?)
         let starting_time_factory = ClockStartingTimeFactory::new();
+
+        //Create a Standard Clock
         let clock = Arc::new(StandardClock());
 
+        //Create a struct called NodeServices that the validator_factory created above,
+        //a starting_time_factory, persister, and clock
         let services = NodeServices {
             validator_factory,
             starting_time_factory,
@@ -129,19 +171,30 @@ impl Signer {
             clock,
         };
 
+        //Create a vls signer 'handler' with the network, services, and secret
         let handler = handler::RootHandlerBuilder::new(network, 0 as u64, services.clone(), sec)
             .build()
             .map_err(|e| anyhow!("building root_handler: {:?}", e))?;
 
+        
+        //Create an init message for a signer
         #[allow(deprecated)]
         let init = Signer::initmsg(&handler.0)?;
 
+        //OLD_CODE
+        //Pull the 3rd to 36th byte from the init message to make the id (from the sec?)
+        //let id = init[2..35].to_vec();
+
+        //NEW CODE
         let init = HsmdInitReplyV4::from_vec(init).unwrap();
         let id = init.node_id.0.to_vec();
         use vls_protocol::msgs::SerBolt;
         let init = init.as_vec();
 
+        //log
         trace!("Initialized signer for node_id={}", hex::encode(&id));
+
+        //Return a signer with the secret, node services, tls config, id, init message, network, and state
         Ok(Signer {
             secret: sec,
             services,
@@ -181,8 +234,16 @@ impl Signer {
         .0)
     }
 
+    //G
     /// Create an `init` request that we can pass to the signer.
+    ///G_END
+
+    //RANDY_COMMENTED
+    //Call 'HsmdInit' with a hardcoded init config and return (this takes in no arguments)
     fn initreq() -> vls_protocol::msgs::Message {
+
+        //Give the return value of the vls protocol's HsmdInit method that takes in
+        //an init model filled with default values
         vls_protocol::msgs::Message::HsmdInit(vls_protocol::msgs::HsmdInit {
             key_version: vls_protocol::model::Bip32KeyVersion {
                 pubkey_version: 0,
@@ -217,7 +278,12 @@ impl Signer {
         })
     }
 
+
+    //RANDY_COMMENTED
+    //Call the handler's 'handle' on the init request returned by the signer
     fn initmsg(handler: &vls_protocol_signer::handler::RootHandler) -> Result<Vec<u8>, Error> {
+
+        //Use the vls signer handler in the argument to return an 'initmsg'
         Ok(handler.handle(Signer::initreq()).unwrap().0.as_vec())
     }
 
@@ -253,11 +319,23 @@ impl Signer {
             .collect()
     }
 
+    
+    
+    //G
     /// Given the URI of the running node, connect to it and stream
     /// requests from it. The requests are then verified and processed
     /// using the `Hsmd`.
+    ///G_E
+
+    //RANDY_COMMENTED
+    //Create a channel to the node_uri given and stream hsm requests from the
+    //plugin. There should always be a message to receive when the plugin
+    //call is returned. Then get approvals using dummyauthroizer,
+    //process the requests, and call 'respond_hsm_request'
     pub async fn run_once(&self, node_uri: Uri) -> Result<(), Error> {
+        //Log that we're connecting to the node at the uri passed in
         debug!("Connecting to node at {}", node_uri);
+        //Create a tonic endpoint (used to be 'Channel::builder(node_uri)') by using the node_uri
         let c = Endpoint::from_shared(node_uri.to_string())?
             .tls_config(self.tls.inner.clone().domain_name("localhost"))?
             .tcp_keepalive(Some(crate::TCP_KEEPALIVE))
@@ -266,39 +344,64 @@ impl Signer {
             .keep_alive_while_idle(true)
             .connect_lazy();
 
+        //Create a new Node Client from the greenlight.proto service
         let mut client = NodeClient::new(c);
 
+        //Call 'stream_hsm_requests' on the node client (which calls grpc on plugin)
+        //and store the response in 'stream'
         let mut stream = client
             .stream_hsm_requests(Request::new(Empty::default()))
             .await?
             .into_inner();
 
+        //Log that we're starting to stream the signer requests
         debug!("Starting to stream signer requests");
+
+        //Loop forever
         loop {
+
+            //Match the stream message we're awaiting ong
             let req = match stream
                 .message()
                 .await
                 .map_err(|e| Error::NodeDisconnect(e))?
             {
+                //If there's somethign found, unwrap the request
                 Some(r) => r,
                 None => {
+                    //If there's nothing found, say that the request stream ended
                     warn!("Signer request stream ended, the node shouldn't do this.");
+                    //Return ok
                     return Ok(());
                 }
             };
+
+            //Decode the request
             let hex_req = hex::encode(&req.raw);
+            
+            //Get the signer state
             let signer_state = req.signer_state.clone();
+
+            //log thay we received the request
             trace!("Received request {}", hex_req);
 
+            //Call 'process_request' on the request received (removed the approvals made
+            //by the dummy authorizer auth::Authorizer)
+            //REVISIT
             match self.process_request(req).await {
+                //If the response of process request is ok
                 Ok(response) => {
+                    //Log that we're sending the response
                     trace!("Sending response {}", hex::encode(&response.raw));
+
+                    //Send the response with the client's 'respond_hsm_request'
                     client
                         .respond_hsm_request(response)
                         .await
                         .map_err(|e| Error::NodeDisconnect(e))?;
                 }
                 Err(e) => {
+                    //If the request failed to be processed then log the request and the signer state
                     warn!(
                         "Ignoring error {} for request {} with state {:?}",
                         e, hex_req, signer_state,
@@ -325,23 +428,57 @@ impl Signer {
         Ok(())
     }
 
+    //RANDY_COMMENTED
+    //Creates a signer state merging local signer state with request signer state,
+    //tries to parse the 'raw' bytes in the requst into vls messages,
+    //constructs a handler and handles the message based on the dbid in the context of
+    //the request in the argument. Finally returns the request id, the response message, 
+    //and the new signer state
     async fn process_request(&self, req: HsmRequest) -> Result<HsmResponse, Error> {
+        //Get the signer_state from the HsmRequest and save it into 'diff'
         let diff: crate::persist::State = req.signer_state.clone().into();
 
+        //Set prestate to the code expression
         let prestate = {
+
+            //Log that we're updating the signer state with that from the node
             debug!("Updating local signer state with state from node");
+
+            //Mutex lock the state
             let mut state = self.state.lock().unwrap();
+
+            //REMOVED LOG BELOW
+            // //Log that we're consolidating the local state of the signer and the remote state from the HsmRequest
+            // trace!(
+            //     "Applying diff between local and remote state: {:?}",
+            //     state.diff(&diff)
+            // );
+
+            //Call 'merge' on the local state and the state from the HsmRequest ('diff')
             state.merge(&diff).unwrap();
+
+            //Log that we're processing the raw request
             trace!("Processing request {}", hex::encode(&req.raw));
+
+            //Return the clone of the merged signer state
             state.clone()
         };
 
+        //G
         // The first two bytes represent the message type. Check that
         // it is not a `sign-message` request (type 23).
+        //G_END
+
+        //Read the first 2 bytes from the bytes of the 'raw' field of the HsmRequest
+        //and trigger condition if the number made from 2 bytes is 23
+        //TODO: Define magic number
         if let &[h, l, ..] = req.raw.as_slice() {
+
             let typ = ((h as u16) << 8) | (l as u16);
             if typ == 23 {
+                //Log that we're refusing to process the sign-message request
                 warn!("Refusing to process sign-message request");
+                //Return an error on how we can't process sign-message requests
                 return Err(Error::Other(anyhow!(
                     "Cannot process sign-message requests from node."
                 )));
@@ -362,7 +499,10 @@ impl Signer {
             })
             .collect::<Vec<model::Request>>();
 
+        //Use the vls protocol library to parse the entire raw request
         let msg = vls_protocol::msgs::from_vec(req.raw.clone()).map_err(|e| Error::Protocol(e))?;
+
+        //Log that we're handling the message and log the message
         log::debug!("Handling message {:?}", msg);
         log::trace!("Signer state {}", serde_json::to_string(&prestate).unwrap());
 
@@ -401,13 +541,19 @@ impl Signer {
         let approvals = auth.authorize(&ctxrequests).map_err(|e| Error::Auth(e))?;
         debug!("Current approvals: {:?}", approvals);
 
+        //Create a MemoApprover from the vls library and initialize it with a 'PositiveApprover'
         let approver = Arc::new(MemoApprover::new(approver::ReportingApprover::new(
             #[cfg(feature = "permissive")]
             vls_protocol_signer::approver::PositiveApprover(),
             #[cfg(not(feature = "permissive"))]
             vls_protocol_signer::approver::NegativeApprover(),
         )));
+
+         //Call 'approve' on the approver, using the 'approvals' found in the argument
         approver.approve(approvals);
+
+        //Call the helper 'handler_with_approver' to create a handler initialized
+        //with the approver made above (that just approved the approvals argument)
         let root_handler = self.handler_with_approver(approver)?;
 
         log::trace!("Updating state from context");
@@ -415,12 +561,31 @@ impl Signer {
             .expect("Updating state from context requests");
         log::trace!("State updated");
 
+        //G
         // Match over root and client handler.
+        //G_END
+
+        //Set the response to the match of the request context
         let response = match req.context {
+
+            //If the response is request is an hsmrequestcontext with dbit 0,
+            //then return the result of using the root handler to handle the msg
             Some(HsmRequestContext { dbid: 0, .. }) | None => {
+                //G
                 // This is the main daemon talking to us.
+                //G_END
+
+                //Use the root handler to handle the message
+                //(that was originally resolved from the hsmrequest's raw field)
                 root_handler.handle(msg)
             }
+
+            //If the request context isn't an hsm context where the db id isn't 0
+            //then get the public key from the node id in the request context,
+            // and create a new handler (with the correct dbid) to handle the message
+
+            //TODO: Maybe change thois 'c' to be a general HsmRequestContext to scope
+            //the type since we know what it should be
             Some(c) => {
                 let pk: [u8; 33] = c.node_id.try_into().unwrap();
                 let pk = vls_protocol::model::PubKey(pk);
@@ -429,14 +594,25 @@ impl Signer {
                     .handle(msg)
             }
         }
+
+        //Map error if something goes wrong
+        //Starting to use Error::Other
         .map_err(|e| Error::Other(anyhow!("processing request: {e:?}")))?;
 
+        //Initiialize the signer state to the code expression
         let signer_state: Vec<crate::pb::SignerStateEntry> = {
+            //Log that we're serializing state changes
             debug!("Serializing state changes to report to node");
+
+            //mutex lock our local state
             let state = self.state.lock().unwrap();
+
+            //return the current local state
             state.clone().into()
         };
 
+        //Return the hsm response with the response from the handler, 
+        //the request id from the hsmrequest, and the signer state
         Ok(HsmResponse {
             raw: response.0.as_vec(),
             request_id: req.request_id,
@@ -444,11 +620,17 @@ impl Signer {
         })
     }
 
+    //RANDY_COMMENTED
+    //Return the node_id
     pub fn node_id(&self) -> Vec<u8> {
+        //Return the cloned node_id
         self.id.clone()
     }
 
+    //RANDY_COMMENTED
+    //Returns the init property
     pub fn get_init(&self) -> Vec<u8> {
+        //Clones and returns the init property
         self.init.clone()
     }
 
@@ -536,29 +718,46 @@ impl Signer {
         Self::run_forever_with_uri(&self, shutdown, scheduler_uri).await
     }
 
+    //RANDY_COMMENTED
+    //Makes tonic channel using scheduler_uri arg (prob gotten from ENV var)
+    //calls get_node_info and goes into an endless loop of calling 'run_once' until
+    //it receives a shutdown signal
     pub async fn run_forever_with_uri(
         &self,
         mut shutdown: mpsc::Receiver<()>,
         scheduler_uri: String,
     ) -> Result<(), anyhow::Error> {
+        //Adding a debug statement saying we're connecting to the scheduler
         debug!(
             "Contacting scheduler at {} to get the node address",
             &scheduler_uri
         );
 
+    //Create a tonic channel using the scheduler_uri
         let channel = Endpoint::from_shared(scheduler_uri)?
             .tls_config(self.tls.inner.clone())?
             .tcp_keepalive(Some(crate::TCP_KEEPALIVE))
             .http2_keep_alive_interval(crate::TCP_KEEPALIVE)
             .keep_alive_timeout(crate::TCP_KEEPALIVE_TIMEOUT)
             .keep_alive_while_idle(true)
+            //connect the channel and lazy await the connection
             .connect_lazy();
+
+        //Create a SchedulerClient with the tonic channel
         let mut scheduler = SchedulerClient::new(channel);
 
+        //G
         // Upgrade node if necessary.
         // If it fails due to connection error, sleep and retry. Re-throw all other errors.
+        //G_END
+        
+        //CHANGED: maybe_upgrade was put inside a loop
         loop {
+            //Allow the deprecated in the UpgradeRequest init_message
             #[allow(deprecated)]
+
+            //Call 'maybe_upgrade' ont he scheduler while passing in
+            // the init message, version, and startup messages we have
             let maybe_upgrade_res = scheduler
                 .maybe_upgrade(UpgradeRequest {
                     initmsg: self.init.clone(),
@@ -587,58 +786,81 @@ impl Signer {
             break;
         }
 
+        //Endlessly loop
         loop {
+            //Log that we're getting the node's info
             debug!("Calling scheduler.get_node_info");
+
+            //Get the node from 'scheduler.get_node_info' using the NodeInfoRequest
+            // and the id we have on our signer
             let get_node = scheduler.get_node_info(NodeInfoRequest {
                 node_id: self.id.clone(),
 
+                //G
                 // This `wait` parameter means that the scheduler will
                 // not automatically schedule the node. Rather we are
                 // telling the scheduler we want to be told as soon as
                 // the node is being scheduled so we can re-attach to
                 // that.
+                //G_END
                 wait: true,
             });
-            tokio::select! {
-                    info = get_node => {
-                let node_info = match info
-                                .map(|v| v.into_inner())
-                            {
-                                Ok(v) => {
-                                    debug!("Got node_info from scheduler: {:?}", v);
-                                    v
-                                }
-                                Err(e) => {
-                                    trace!(
-                                        "Got an error from the scheduler: {}. Sleeping before retrying",
-                                        e
-                                    );
-                                    sleep(Duration::from_millis(1000)).await;
-                                    continue;
-                                }
-                            };
 
-                            if node_info.grpc_uri.is_empty() {
-                                trace!("Got an empty GRPC URI, node is not scheduled, sleeping and retrying");
+            //tokio select races the various branches concurrently and
+            // stops after it gets a result from one
+            tokio::select! {
+
+                    //Set info to the get_node return value lambda
+                    info = get_node => {
+                        //Match the node info mapped into it's inner value
+                        let node_info = match info.map(|v| v.into_inner())
+                        {
+                            //If it's okay, then return the node info
+                            Ok(v) => {
+                                debug!("Got node_info from scheduler: {:?}", v);
+                                v
+                            }
+
+                            //If it's an error then log, sleep, and continue
+                            //to the next loop iteration
+                            Err(e) => {
+                                trace!(
+                                    "Got an error from the scheduler: {}. Sleeping before retrying",
+                                    e
+                                );
                                 sleep(Duration::from_millis(1000)).await;
                                 continue;
                             }
+                        };
 
-                            if let Err(e) = self
-                                .run_once(Uri::from_maybe_shared(node_info.grpc_uri)?)
-                            .await {
-                                warn!("Error running against node: {}", e);
-                            }
+                        //If there's no grpc uri then log, sleep, and continue
+                        if node_info.grpc_uri.is_empty() {
+                            trace!("Got an empty GRPC URI, node is not scheduled, sleeping and retrying");
+                            sleep(Duration::from_millis(1000)).await;
+                            continue;
+                        }
+
+                        //If the error is set to 'run_once'
+                        if let Err(e) = self
+                            .run_once(Uri::from_maybe_shared(node_info.grpc_uri)?)
+                        .await {
+                            warn!("Error running against node: {}", e);
+                        }
 
 
                         },
+                    //Try and set a value to the shutdown channel receive and log 
+                    //and break if something's found
                     _ = shutdown.recv() => {
-                debug!("Received the signal to exit the signer loop");
-                break;
-            },
+                        debug!("Received the signal to exit the signer loop");
+                        break;
+                    },
                 };
         }
+        //Log that we're exiting the signer loop
         info!("Exiting the signer loop");
+
+        //return ok
         Ok(())
     }
 

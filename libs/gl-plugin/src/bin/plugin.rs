@@ -96,15 +96,23 @@ async fn get_signer_store() -> Result<Box<dyn StateStore>, Error> {
     Ok(Box::new(SledStateStore::new(state_dir)?))
 }
 
+//RANDY
+//Runs the Hsm server
 fn start_hsm_server(config: Config, stage: Arc<Stage>) -> Result<(), Error> {
+    //G
     // We run this already at startup, not at configuration because if
     // the signerproxy doesn't find the socket on the FS it'll exit.
+    //G_E
+
+    //the hsm server is initialized here
     let hsm_server = hsm::StagingHsmServer::new(
         PathBuf::from_str(&config.hsmd_sock_path).context("hsmd_sock_path is not a valid path")?,
         stage.clone(),
         config.node_info.clone(),
         config.node_config.clone(),
     );
+
+    //run the hsm server
     tokio::spawn(hsm_server.run());
     Ok(())
 }
