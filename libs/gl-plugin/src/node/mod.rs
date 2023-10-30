@@ -254,7 +254,8 @@ impl Node for PluginNodeServer {
         let mut stream = self.stage.mystream().await;
         let signer_state = self.signer_state.clone();
         let ctx = self.ctx.clone();
-
+        let rrpc = self.rpc.clone();
+        
         tokio::spawn(async move {
             trace!("hsmd hsm_id={} request processor started", hsm_id);
             loop {
