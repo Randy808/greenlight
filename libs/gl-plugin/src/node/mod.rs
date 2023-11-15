@@ -411,7 +411,7 @@ impl Node for PluginNodeServer {
                     })
                     .collect();
 
-                //Turn the vec of signer state entries into the req's request signer_state
+                //Turn the vec of signer state entries into the req's request's signer_state
                 req.request.signer_state = state.into();
 
                 //get the context snapshot and put it into requests
@@ -788,10 +788,15 @@ impl SignatureContextLayer {
     }
 }
 
+//RANDY_COMMENTED
+//Implement the layer trait for the signature context layer
 impl<S> Layer<S> for SignatureContextLayer {
+    //Type the signature context service as 'Service'
     type Service = SignatureContextService<S>;
 
+    //Create a method called layer that takes in a service and wraps that service in a SignatureContextService
     fn layer(&self, service: S) -> Self::Service {
+        //Returns a SignatureContextService with an inner service and a context
         SignatureContextService {
             inner: service,
             ctx: self.ctx.clone(),
@@ -808,6 +813,8 @@ pub struct SignatureContextService<S> {
     ctx: crate::context::Context,
 }
 
+//RANDY_COMMENTED
+//The SignatureContextService used to protect the NodeServer in plugin.rs
 impl<S> Service<hyper::Request<hyper::Body>> for SignatureContextService<S>
 where
     S: Service<hyper::Request<hyper::Body>, Response = hyper::Response<tonic::body::BoxBody>>
@@ -828,6 +835,9 @@ where
         self.inner.poll_ready(cx).map_err(Into::into)
     }
 
+    //RANDY_COMMENTED
+    //Method called when pluginNodeServer is called
+    //CHECKPOINT
     fn call(&mut self, request: hyper::Request<hyper::Body>) -> Self::Future {
         // This is necessary because tonic internally uses `tower::buffer::Buffer`.
         // See https://github.com/tower-rs/tower/issues/547#issuecomment-767629149
@@ -905,17 +915,24 @@ where
                 let request = hyper::Request::from_parts(parts, body);
                 let res = inner.call(request).await;
 
+                //G
                 // Defer cleanup into a separate task, otherwise we'd
                 // need `res` to be `Send` which we can't
                 // guarantee. This is needed since adding an await
                 // point splits the state machine at that point.
+                //G_END
+
+                //R
+                //After we process the request, spawn a new task to clean the request from the context
                 tokio::spawn(async move {
                     reqctx.remove_request(req).await;
                 });
                 res.map_err(Into::into)
             } else {
+                //G
                 // No point in buffering the request, we're not going
                 // to add it to the `HsmRequestContext`
+                //G_END
                 let request = hyper::Request::from_parts(parts, body);
                 inner.call(request).await.map_err(Into::into)
             }

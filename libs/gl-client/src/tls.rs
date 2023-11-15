@@ -25,13 +25,23 @@ pub struct TlsConfig {
     pub ca: Vec<u8>,
 }
 
+//RANDY_COMMENTED
+//Uses the first argument to look for the environment variable that contains
+//the name of the file to load.
 fn load_file_or_default(varname: &str, default: &[u8]) -> Result<Vec<u8>> {
+    //match string with a variable found in the environment
     match std::env::var(varname) {
+        //If the environment variable was found, then value is fname representing
+        //a file name
         Ok(fname) => {
+            //Say that we're loading fname from the env variable
             debug!("Loading file {} for envvar {}", fname, varname);
+            //Return the result of std::fs::read
             Ok(std::fs::read(fname.clone())
+                //And return an error saying we couldn't read the file if it failes
                 .with_context(|| format!("could not read file {} for envvar {}", fname, varname))?)
         }
+        //If the env variable isn't defined, return the default argument
         Err(_) => Ok(default.to_vec()),
     }
 }
@@ -60,15 +70,25 @@ impl TlsConfig {
 }
 
 impl TlsConfig {
+
+    //G
     /// This function is used to upgrade the anonymous `NOBODY`
     /// configuration to a fully authenticated configuration.
     ///
     /// Only non-`NOBODY` configurations are able to talk to their
     /// nodes. If the `TlsConfig` is not upgraded, nodes will reply
     /// with handshake failures, and abort the connection attempt.
+    //G_END
+
+    //RANDY_COMMENTED
+    //Return the TlsConfig by constructing the inner ClientTLSConfid with the certs
     pub fn identity(self, cert_pem: Vec<u8>, key_pem: Vec<u8>) -> Self {
+
+        //Create the TlsConfig
         TlsConfig {
+            //Set the inner to the inner ClientTls from tonic
             inner: self.inner.identity(Identity::from_pem(cert_pem, &key_pem)),
+            //Set the private key to the key_pem
             private_key: Some(key_pem),
             ..self
         }
@@ -161,14 +181,23 @@ fn cert_params_from_template(subject_alt_names: Vec<String>) -> rcgen::Certifica
 pub mod tests {
     use super::*;
 
+    //RANDY_COMMENTED
     #[test]
     fn test_generate_self_signed_device_cert() {
+        //Set the device cert to a generated self signed
+        //device certificate made using the nodeid and the 
+        //device id as the common name, and a vec of the subject alt names
         let device_cert =
             generate_self_signed_device_cert("mynodeid", "device", vec!["localhost".into()]);
+
+        //Assert that the device cert's serialize pem shows the certificate
         assert!(device_cert
             .serialize_pem()
             .unwrap()
             .starts_with("-----BEGIN CERTIFICATE-----"));
+
+        //Assert that the device cert serialized as a private key starts with 
+        //the pem format '-----BEGIN PRIVATE KEY'
         assert!(device_cert
             .serialize_private_key_pem()
             .starts_with("-----BEGIN PRIVATE KEY-----"));

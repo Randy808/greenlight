@@ -1,0 +1,30 @@
+core components in gl-client (lnssl acronym):
+  -lnurl
+  -node
+  -signer
+  -scheduler.rs
+  -lsps
+
+Same custom components are built for python binding:
+  -lsps
+  -node
+  -scheduler
+  -signer
+
+gl-plugin components:
+  -node
+    -PluginNodeServer
+    -SignatureContextService
+  -context
+
+
+
+-Pipeline for hsm server
+  -SignatureContextLayer
+  -RpcWaitService
+    -NodeServer (this is a protobuff impl of cln)
+      -WrappedNodeServer
+        -Makes and stores 'cln_grpc::Server' using PluginNodeServer's rpc path, and also stores raw PluginNodeServer
+        -PluginNodeServer is passed in so we can make a greenlight 'reconnect_peers' call before the native cln 'pay' call
+  -NodeServer (protobuff)
+    -PluginNodeServer (has state and handles custom gl methods)

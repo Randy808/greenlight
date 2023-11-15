@@ -1,0 +1,15 @@
+%% Initiating a signing request through cln call
+flowchart TB
+    GlClient-- (1) -->PluginNodeServer
+    Signer -- (0) --> PluginNodeServer
+    PluginNodeServer -- (6) --> Signer
+    subgraph Client
+    GlClient
+    Signer
+    end
+    subgraph PluginServer
+    PluginNodeServer -- (2) --> ClnNode
+    ClnNode -- (3) --> HsmProxy
+    HsmProxy -- (4) --> Stage 
+    Stage -- (5) --> PluginNodeServer
+    end

@@ -1,3 +1,4 @@
+//G
 //! Manage a signature request context.
 //!
 //! The signature request context is composed of any currently pending grpc request (serialized as byte string), along with a public key (corresponding to the caller's mTLS certificate), an attestation (signature) by the signer about the authenticity of this public key, as well as a signature from the caller's public key over the serialized payload.
@@ -9,6 +10,7 @@
 //! b) Verify that the changes that the signer is being asked to
 //!    sign off actually match the authentic commands by a valid
 //!    caller.
+//G_END
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -16,12 +18,21 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Request {
+    //G
     // The caller's mTLS public key
+    //G_END
+
+    //The pubkey associated with request
     pubkey: Vec<u8>,
 
+    //G
     // A signature by the caller's public key, authenticating the
     // payload.
+    //G_END
+    //a signature authorizing req form pubkey
     signature: Vec<u8>,
+
+    //CHECKPOINT
 
     // The serialized grpc call, transferred as serialized String to
     // avoid breaking the signature.

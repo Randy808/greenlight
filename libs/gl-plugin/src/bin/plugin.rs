@@ -34,30 +34,41 @@ async fn main() -> Result<(), Error> {
     }
 }
 
+//RANDY_COMMENTED
+//Starts a PluginNodeServer, wraps that with a WrappedNodeServer and NodeServer before using
+//the result to build the tonic 'router' server containing an auth service and rpc wait middleware/layer
 async fn start_node_server(
     config: Config,
     stage: Arc<Stage>,
     events: tokio::sync::broadcast::Sender<Event>,
     signer_state_store: Box<dyn StateStore>,
 ) -> Result<(), Error> {
+
+    //Create a socket address using the config values
     let addr: SocketAddr = config
         .node_grpc_binding
         .parse()
         .context("parsing the node_grpc_binding")?;
 
+    //Create a tls config using the identity certs in the config
     let tls = tonic::transport::ServerTlsConfig::new()
         .identity(config.identity.id.clone())
         .client_ca_root(config.identity.ca.clone());
 
+    //Use the current directory as the rpc_path
     let mut rpc_path = std::env::current_dir().unwrap();
+    //Push the lightning-rpc into the rpc_path
     rpc_path.push("lightning-rpc");
 
+    //Log that we're starting the grpc server on the address derived from the config and
+    // the rpc path of the current dir
     info!(
         "Starting grpc server on addr={} serving rpc={}",
         addr,
         rpc_path.display()
     );
 
+    //Create a new PluginNodeServer with the stage, config, event, and signer_state_store
     let node_server = PluginNodeServer::new(
         stage.clone(),
         config.clone(),
@@ -66,11 +77,15 @@ async fn start_node_server(
     )
     .await?;
 
+    //Create a NodeServer using the PluginNodeServer (by wrapping the PluginNodeServer with WrappedNodeServer)
     let cln_node = gl_plugin::grpc::pb::node_server::NodeServer::new(
         gl_plugin::node::WrappedNodeServer::new(node_server.clone())
             .await
             .context("creating cln_grpc::pb::node_server::NodeServer instance")?,
     );
+
+    //Create a tonic router which looks like a server protected by the 
+    //signature context layer, and the rpc wait and node server services
     let router = tonic::transport::Server::builder()
         .tls_config(tls)?
         .layer(gl_plugin::node::SignatureContextLayer::new(
@@ -81,18 +96,27 @@ async fn start_node_server(
             gl_plugin::node::WrappedNodeServer::new(node_server).await?,
         ));
 
+    //Spawn a new task using the router to serve from the addr in the config
     tokio::spawn(async move {
         router
             .serve(addr)
             .await
             .context("grpc interface exited with error")
     });
+
+    //Return an ok
     Ok(())
 }
 
+//RANDY_COMMENTED
+//Returns a pointer to the SledStateStore containing the state directory
 async fn get_signer_store() -> Result<Box<dyn StateStore>, Error> {
+    //Get the state directory as the current directory
     let mut state_dir = env::current_dir()?;
+    //Push the 'signer_state' string to this directory
     state_dir.push("signer_state");
+
+    //Return a pointer to the state_dir wrapped in a 'SledStateStore'?
     Ok(Box::new(SledStateStore::new(state_dir)?))
 }
 

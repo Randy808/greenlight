@@ -91,7 +91,7 @@ Node.proto file methods are used in signer files. I guess because the signer has
 
 hsmd is initialized to receive on a 1 buffer channel 'mpsc::channel(1)' in signer.rs (in gl-client-py and a duplicated signer in gl-client-js). This channel is also used in 'send' within the stager. In the hsm's 'run' and in the subsequent child invocation of the signer's 'run_forever_*', the signer connects to the node. The signer then runs 'run_once'. It calls 'stream_hsm_requests' on a node client whose rpc is found in greenlight.rs (the rust package). The only definition I can find for this is in gl-plugin.
 
-Since the plugin is started on the node, are the plugin methods automatically exposed on the actual lightning node? In 'run_once' it's constantly calling 'process_request' from there. So it seems the signer connects to the node in 'run_once' , streams requests using 'stream_hsm_requests', and uses 'process_request' on the requests.
+Since the plugin is started on the node, are the plugin methods automatically exposed on the actual lightning node? In 'run_once' it's constantly calling 'process_request' from there. So it seems the signer connects to the node in 'run_once' , and the plugin streams requests using 'stream_hsm_requests', and uses 'process_request' on the requests.
 
 There is a proxy on the node that intercepts requests and queues them up in a plugin that the signer then streams messages from. The plugin processing requests is in gl-plugin/src/hsm.rs
 
@@ -124,6 +124,23 @@ StagingHsmServer and request
 stage and send
 
 *'start_handler' in hsmproxy is initialized by 'run' but is called repeatedly in the 'run' method using start_handler
+
+---
+
+
+*******
+signer:stream_hsm_requests
+  -call from signer and use the returned receiver to receive messages from 10 byte data stream (tx,rx)
+    -things that get sent with tx comes from  stager
+    
+    
+PluginNodeServer:stream_hsm_requests
+  -uses stager to receive messages later forwarded to data stream (tx, rx) shared with signer
+  
+PluginNodeServer:hsm_proxy
+  -puts HsmRequests in stager
+
+
 
 ---
 
@@ -160,3 +177,30 @@ bitcoin-cli -regtest -rpcconnect=127.0.0.1:50869 -rpcuser=rpcuser -rpcpassword=r
 lightning-cli --lightning-dir=/tmp/gltesting/tmp/tmp2gpgx20s/node-0 --network=regtest --log-level=debug --bitcoin-rpcuser=rpcuser --bitcoin-rpcpassword=rpcpass --bitcoin-rpcconnect=localhost:38261
 
 lightning-cli --lightning-dir=/tmp/gltesting/tmp/tmpfkfoc_3d/node-0 --network=regtest listdatastore
+
+
+----
+
+
+configure method now needs to conform to https://github.com/Blockstream/greenlight/pull/275#issuecomment-1764675706
+
+To do this I can:
+  -identify and store raw 'configure' requests from the signature context middleware 
+  -retrieve the 'configure' stored request in 'stream_hsm_requests' and forward that to the signer on every request
+    -add it to the HsmRequest's 'requests', which is populated from the node's context in the 'stream_hsm_requests'
+    -it gets auto-added to the context's requests when a sig and pubkey is detected on req in the SignatureContextService's call, but I don't think it'll get sent to the signer unless we get an hsm request during the processing of the request
+      -its okay if the request doesn't get added when we make the configure call. Just put the appropriate logic in 'stream_hsm_requests' to inject it when we *do* get an hsm request
+    -regular core lightning requests come from stager
+  -In process_request I can handle the custom message in authenticate_request to configure the handler
+  
+STRATEGY
+-In SignatureContextLayer (gl-plugin/node/mod.rs) we take the http request and parse it into a context::Request so we can put it in the context. We can reafctor that to call the conversion code frm anywhere. Then we can pass the raw http request into configure, serialize it, and pull it out and convert it in stream_hsm_request
+
+-Is there a way for me to receive just the http request in the tonic grpc method handler in PluginNode? Othwerwise should I just save it from the SignatureRequestContext? 
+  -Nvm all those above, we already have access to it from the context
+
+-Change greenlight/libs/gl-client/src/signer/model/greenlight.rs
+
+---
+
+Our custom persister (gl-client/src/persist.rs::MemoryPersister) has an 'update_node_allowlist' which adds an a

@@ -116,7 +116,7 @@ impl Hsm for StagingHsmServer {
             }));
         }
 
-        //If the requst isn't in the startup messages 
+        //If the request isn't in the startup messages 
         //and we don't have a type we can understand and respond to...
 
         //match a response to us sending the request to the stage that should

@@ -107,7 +107,7 @@ impl Scheduler {
             vec!["localhost".into()],
         );
 
-        //Serialize the cert
+        //Serialize the cert signing request
         let device_csr = device_cert.serialize_request_pem()?;
 
         //log

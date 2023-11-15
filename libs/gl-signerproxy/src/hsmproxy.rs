@@ -81,7 +81,7 @@ fn start_handler(local: NodeConnection, counter: Arc<atomic::AtomicUsize>, grpc:
 }
 
 //Either registers a new node connection or uses
-//the node connection passed in, sends it to grpc server, and
+//the node connection passed in, sends it to grpc server (staging hsm server), and
 //forwards it on to existing node connection in argument
 async fn process_requests(
     node_conn: NodeConnection,
@@ -186,6 +186,7 @@ async fn process_requests(
                     debug!("Got a message from node: {:?}", &req);
 
                     //Forward the request to the grpc server and save the response
+                    //(calls hsm.rs's 'request' in 'impl Hsm for StagingHsmServer')
                     let res = server.request(req).await?.into_inner();
 
                     //Parse the response back into a message
