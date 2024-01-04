@@ -13,3 +13,17 @@ flowchart TB
     HsmProxy -- (4) --> Stage 
     Stage -- (5) --> PluginNodeServer
     end
+
+
+    Signer -> Greenlight Server: connect to plugin server
+    Developer Device -> Greenlight Server: sendpay
+    Greenlight Server -> CLN Node: call sendpay
+    CLN Node -> HsmProxy: send signing request
+    HsmProxy -> Stager: send to stage
+    Stager -> Greenlight Server: has server read message from stage stream
+    Greenlight Server -> Signer: send request to signer
+    Signer -> Greenlight Server: send signed request back to server
+    Greenlight Server -> Stager: send request to stager
+    Stager -> HsmProxy: send to proxy
+    HsmProxy  -> CLN Node: allow message to be read from node
+    
