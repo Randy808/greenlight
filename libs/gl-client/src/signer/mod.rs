@@ -387,7 +387,6 @@ impl Signer {
 
             //Call 'process_request' on the request received (removed the approvals made
             //by the dummy authorizer auth::Authorizer)
-            //REVISIT
             match self.process_request(req).await {
                 //If the response of process request is ok
                 Ok(response) => {

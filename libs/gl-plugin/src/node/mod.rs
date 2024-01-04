@@ -417,16 +417,22 @@ impl Node for PluginNodeServer {
                 //get the context snapshot and put it into requests
                 req.request.requests = ctx.snapshot().await.into_iter().map(|r| r.into()).collect();
 
-                //REVISIT
-                //REVISIT_RANDY
+                
+                //Lock a mutex guarding the serialized_configure_request (cached from the last configure call)
                 let serialized_configure_request = SERIALIZED_CONFIGURE_REQUEST.lock().await;
 
+                //match the serialized configure request
                 match &(*serialized_configure_request) {
+
+                    //If there's something present
                     Some(serialized_configure_request) => {
+                        //Deserialize the request
                         let configure_request = serde_json::from_str::<crate::context::Request>(
                             serialized_configure_request,
                         )
                         .unwrap();
+
+                        //Push the configure_request into the requests to be sent to the signer
                         req.request.requests.push(configure_request.into());
                     }
                     None => {}
