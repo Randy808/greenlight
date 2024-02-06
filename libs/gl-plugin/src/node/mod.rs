@@ -272,7 +272,7 @@ impl Node for PluginNodeServer {
     //and forward the request using the outgoing stream. Then do some connecting of the peers using
     //datastore and node info, and return the receive of the stream.
 
-    //So this function attaches one end of a stream to the stage from the nde, and returns the other end
+    //So this function attaches one end of a stream to the stage, and returns the other end
     async fn stream_hsm_requests(
         &self,
         _request: Request<pb::Empty>,

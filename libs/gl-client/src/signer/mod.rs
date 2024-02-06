@@ -360,7 +360,7 @@ impl Signer {
         //Loop forever
         loop {
 
-            //Match the stream message we're awaiting ong
+            //Match the stream message we're awaiting on from the node stream
             let req = match stream
                 .message()
                 .await
@@ -410,20 +410,29 @@ impl Signer {
         }
     }
 
+    //RANDY_COMMENTED
+    //Logs the requests/context in the 'reqs' argument before validating the desired vls message against the request context
     fn authenticate_request(
         &self,
         msg: &vls_protocol::msgs::Message,
         reqs: &Vec<model::Request>,
     ) -> Result<(), Error> {
+
+        //Log that we're resolving a signature request against pending grpc commands, and show what those commands are
         log::trace!(
             "Resolving signature request against pending grpc commands: {:?}",
             reqs
         );
 
+        //G
         // Quick path out of here: we can't find a resolution for a
         // request, then abort!
+        //G_END
+
+        //Try to reolve the signature request message with our existing grpc requests
         Resolver::try_resolve(msg, &reqs)?;
 
+        //If we didn't error out at this point, return ok
         Ok(())
     }
 
@@ -484,11 +493,17 @@ impl Signer {
             }
         }
 
+        //Get the requests from greenlight request 'req', authenticate them, and convert the cre-lightning messages into ones defined by the signer
         let ctxrequests: Vec<model::Request> = self
+            //Check the request auth on the grpc requests in the req from greenlight
             .check_request_auth(req.requests.clone())
+            //Put it into iter
             .into_iter()
+            //Filter on the requests we could authenticate
             .filter_map(|r| r.ok())
+            //Decode the request from a cln message object to a corresponding local signer one
             .map(|r| decode_request(r))
+            //Filter and map to make sure all req are valid
             .filter_map(|r| match r {
                 Ok(r) => Some(r),
                 Err(e) => {
@@ -496,6 +511,7 @@ impl Signer {
                     None
                 }
             })
+            //collect the requests together
             .collect::<Vec<model::Request>>();
 
         //Use the vls protocol library to parse the entire raw request
@@ -505,6 +521,7 @@ impl Signer {
         log::debug!("Handling message {:?}", msg);
         log::trace!("Signer state {}", serde_json::to_string(&prestate).unwrap());
 
+        //Authenticate the request using the msg parsed by VLS, and the ctxrequests
         if let Err(e) = self.authenticate_request(&msg, &ctxrequests) {
             report::Reporter::report(crate::pb::scheduler::SignerRejection {
                 msg: e.to_string(),

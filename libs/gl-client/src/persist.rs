@@ -198,6 +198,8 @@ impl Display for StateChange {
 }
 
 impl State {
+    //RANDY_COMMENTED
+    //Creates a new signer state store with a map called 'values'
     pub fn new() -> Self {
         State {
             values: BTreeMap::new(),

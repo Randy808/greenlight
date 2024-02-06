@@ -48,18 +48,29 @@ const SLED_KEY: &str = "signer_state";
 
 #[async_trait]
 impl StateStore for SledStateStore {
+    //RANDY_COMMENTED
     async fn read(&self) -> Result<State, Error> {
+        //Match the return value of the db query using SLED_KEY('signer_state')
         match self.db.get(SLED_KEY)? {
+            //If there's nothing
             None => {
+                //log that we're initializing a new signer state
                 debug!("Initializing a new signer state");
+                //return a new signer state
                 Ok(State::new())
             }
+            //If there was a byte vec found, then read it form the slice
             Some(v) => Ok(serde_json::from_slice(&v)?),
         }
     }
 
+    //RANDY_COMMENTED
+    //Write the raw json of the signer state to the sled db
     async fn write(&self, state: State) -> Result<(), Error> {
+        //Convert the state to a byte arr using serde_json
         let raw = serde_json::to_vec(&state)?;
+
+        //Insert the json signer state store into the sled db under the key 'signer_state'
         self.db
             .insert(SLED_KEY, raw)
             .map(|_v| ())

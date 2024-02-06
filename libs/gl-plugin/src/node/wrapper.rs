@@ -644,16 +644,28 @@ impl GlNode for WrappedNodeServer {
         self.node_server.respond_hsm_request(req).await
     }
 
+    //RANDY_COMMENTED
+    //Calls stream_hsm_requests on the node_server with the added call of reconnecting peers in another task
     async fn stream_hsm_requests(
         &self,
         req: Request<Empty>,
     ) -> Result<Response<Self::StreamHsmRequestsStream>, Status> {
+        //G
         // Best Effort reconnection logic
+        //G_END
+
+        //Clone the node server
         let s = self.node_server.clone();
 
+        //G
         // First though call the `node_server` which records the
         // signer being present.
+        //G_END
+
+        //Call stream hsm requests to open up channel from the stage to the gl-plugin
         let res = self.node_server.stream_hsm_requests(req).await;
+
+        //reconnect the peers
         tokio::spawn(async move { s.reconnect_peers().await });
 
         res

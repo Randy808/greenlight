@@ -113,7 +113,7 @@ async fn start_node_server(
 async fn get_signer_store() -> Result<Box<dyn StateStore>, Error> {
     //Get the state directory as the current directory
     let mut state_dir = env::current_dir()?;
-    //Push the 'signer_state' string to this directory
+    //Push the 'signer_state' string to this path var
     state_dir.push("signer_state");
 
     //Return a pointer to the state_dir wrapped in a 'SledStateStore'?

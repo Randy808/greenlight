@@ -31,6 +31,7 @@ pub struct GlPlugin {
     events: broadcast::Sender<Event>,
 }
 
+//RANDY_TODO: Is this needed?
 /// A small wrapper around [`cln_plugin::Builder`] that allows us to
 /// subscribe to events outside the plugin state itself, before
 /// getting configured.
