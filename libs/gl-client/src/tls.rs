@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use log::debug;
 use std::path::Path;
 use tonic::transport::{Certificate, ClientTlsConfig, Identity};
@@ -23,6 +23,11 @@ pub struct TlsConfig {
     pub(crate) private_key: Option<Vec<u8>>,
 
     pub ca: Vec<u8>,
+
+    /// The device_crt parsed as an x509 certificate. Used to
+    /// validate the common subject name against the node_id in
+    /// the scheduler calls.
+    pub x509_cert: Option<X509Certificate>,
 }
 
 fn load_file_or_default(varname: &str, default: &[u8]) -> Result<Vec<u8>> {
@@ -48,10 +53,18 @@ impl TlsConfig {
             .ca_certificate(Certificate::from_pem(ca_crt.as_ref()))
             .identity(Identity::from_pem(crt, key.as_ref()));
 
+        let x509_cert = match X509Certificate::from_pem(crt.as_ref()) {
+            Ok(x) => x,
+            Err(e) => {
+                return Err(anyhow!("Failed to parse x509 certificate: {}", e));
+            }
+        };
+        
         Ok(TlsConfig {
             inner: config,
             private_key: Some(key.as_ref().to_vec()),
             ca: ca_crt.as_ref().to_vec(),
+            x509_cert: Some(x509_cert)
         })
     }
 }
@@ -64,9 +77,12 @@ impl TlsConfig {
     /// nodes. If the `TlsConfig` is not upgraded, nodes will reply
     /// with handshake failures, and abort the connection attempt.
     pub fn identity(self, cert_pem: Vec<u8>, key_pem: Vec<u8>) -> Self {
+        let x509_cert = X509Certificate::from_pem(&cert_pem);
+
         TlsConfig {
-            inner: self.inner.identity(Identity::from_pem(cert_pem, &key_pem)),
+            inner: self.inner.identity(Identity::from_pem(&cert_pem, &key_pem)),
             private_key: Some(key_pem),
+            x509_cert: x509_cert.map_or(None, |x| Some(x)),
             ..self
         }
     }

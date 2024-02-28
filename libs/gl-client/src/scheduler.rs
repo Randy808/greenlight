@@ -366,7 +366,7 @@ impl Scheduler {
             .await?;
         Ok(res.into_inner())
     }
-    
+
     pub async fn add_outgoing_webhook(
         &self,
         outgoing_webhook_request: pb::scheduler::AddOutgoingWebhookRequest,
@@ -377,7 +377,7 @@ impl Scheduler {
             .add_outgoing_webhook(outgoing_webhook_request)
             .await?;
         Ok(res.into_inner())
-    }    
+    }
 
     pub async fn list_outgoing_webhooks(
         &self,
@@ -389,7 +389,7 @@ impl Scheduler {
             .list_outgoing_webhooks(list_outgoing_webhooks_request)
             .await?;
         Ok(res.into_inner())
-    }    
+    }
 
     pub async fn delete_webhooks(
         &self,
@@ -401,11 +401,11 @@ impl Scheduler {
             .delete_webhooks(delete_webhooks_request)
             .await?;
         Ok(res.into_inner())
-    }    
+    }
 
     pub async fn rotate_outgoing_webhook_secret(
         &self,
-        rotate_outgoing_webhook_secret_request: pb::scheduler::RotateOutgoingWebhookSecretRequest
+        rotate_outgoing_webhook_secret_request: pb::scheduler::RotateOutgoingWebhookSecretRequest,
     ) -> Result<pb::scheduler::WebhookSecretResponse> {
         let res = self
             .client
@@ -413,5 +413,60 @@ impl Scheduler {
             .rotate_outgoing_webhook_secret(rotate_outgoing_webhook_secret_request)
             .await?;
         Ok(res.into_inner())
-    }    
+    }
+
+    fn get_node_id_from_tls_config(&self, tls_config: &TlsConfig) -> Result<Vec<u8>> {
+        let subject_common_name =
+            match &tls_config.x509_cert {
+                Some(x) => match x.subject_common_name() {
+                    Some(cn) => cn,
+                    None => return Err(anyhow!(
+                        "Failed to parse the subject common name in the provided x509 certificate"
+                    )),
+                },
+                None => {
+                    return Err(anyhow!(
+                        "The certificate could not be parsed in the x509 format"
+                    ))
+                }
+            };
+
+        let split_subject_common_name = subject_common_name
+            .split("/")
+            .into_iter()
+            .collect::<Vec<&str>>();
+
+        assert!(split_subject_common_name[1] == "users");
+        return Ok(hex::decode(split_subject_common_name[2])
+            .expect("Failed to parse the node_id from the TlsConfig to bytes"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_schedule_returns_error_on_node_id_mismatch() {
+        let cert_node_id: [u8; 32] = rand::random();
+        let device_cert = tls::generate_self_signed_device_cert(
+            &hex::encode(cert_node_id.clone()),
+            "default".into(),
+            vec!["localhost".into()],
+        );
+
+        let device_crt = device_cert.serialize_pem().unwrap();
+        let device_key = device_cert.serialize_private_key_pem();
+
+        let tls_config = TlsConfig::new()
+            .unwrap()
+            .identity(device_crt.into(), device_key.into());
+
+        let scheduler_node_id: [u8; 32] = rand::random();
+        let sched = Scheduler::new(scheduler_node_id.to_vec(), Network::Bitcoin)
+            .await
+            .unwrap();
+
+        assert!(sched.schedule::<node::ClnClient>(tls_config).await.is_err_and(|e| e.to_string().contains("The node_id defined on the TlsConfig does not match the node_id the scheduler was initialized with")));
+    }
 }
