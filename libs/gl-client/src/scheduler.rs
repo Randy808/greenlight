@@ -3,7 +3,7 @@ use crate::node::{self, GrpcClient};
 use crate::pb::scheduler::scheduler_client::SchedulerClient;
 use crate::tls::{self, TlsConfig};
 use crate::{pb, signer::Signer, utils};
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use lightning_signer::bitcoin::Network;
 use log::debug;
 use std::convert::TryInto;
@@ -39,14 +39,14 @@ impl Builder {
     /// # Errors
     ///
     /// Returns an error if `tls` fails to convert into `TlsConfig`.
-    pub fn new<T>(node_id: Vec<u8>, network: Network, tls: T) -> Result<Self>
+    pub fn new<T>(network: Network, tls: T) -> Result<Self>
     where
         T: TryInto<TlsConfig>,
         anyhow::Error: From<T::Error>,
     {
         let tls = tls.try_into()?;
         Ok(Self {
-            node_id,
+            node_id: Scheduler::get_node_id_from_tls_config(&tls)?,
             network,
             uri: None,
             tls,
@@ -97,12 +97,12 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn builder<T>(node_id: Vec<u8>, network: Network, tls: T) -> Result<Builder>
+    pub fn builder<T>(network: Network, tls: T) -> Result<Builder>
     where
         T: TryInto<TlsConfig>,
         anyhow::Error: From<T::Error>,
     {
-        Builder::new(node_id, network, tls)
+        Builder::new(network, tls)
     }
 
     pub async fn with(
@@ -225,7 +225,7 @@ impl Scheduler {
 
         let public_key = device_cert.get_key_pair().public_key_raw();
         debug!(
-            "Asking singer to create a rune for public key {}",
+            "Asking signer to create a rune for public key {}",
             hex::encode(public_key)
         );
 
@@ -300,7 +300,7 @@ impl Scheduler {
 
         let public_key = device_cert.get_key_pair().public_key_raw();
         debug!(
-            "Asking singer to create a rune for public key {}",
+            "Asking signer to create a rune for public key {}",
             hex::encode(public_key)
         );
 
@@ -366,7 +366,7 @@ impl Scheduler {
             .await?;
         Ok(res.into_inner())
     }
-
+    
     pub async fn add_outgoing_webhook(
         &self,
         outgoing_webhook_request: pb::scheduler::AddOutgoingWebhookRequest,
@@ -377,7 +377,7 @@ impl Scheduler {
             .add_outgoing_webhook(outgoing_webhook_request)
             .await?;
         Ok(res.into_inner())
-    }
+    }    
 
     pub async fn list_outgoing_webhooks(
         &self,
@@ -389,7 +389,7 @@ impl Scheduler {
             .list_outgoing_webhooks(list_outgoing_webhooks_request)
             .await?;
         Ok(res.into_inner())
-    }
+    }    
 
     pub async fn delete_webhooks(
         &self,
@@ -401,11 +401,11 @@ impl Scheduler {
             .delete_webhooks(delete_webhooks_request)
             .await?;
         Ok(res.into_inner())
-    }
+    }    
 
     pub async fn rotate_outgoing_webhook_secret(
         &self,
-        rotate_outgoing_webhook_secret_request: pb::scheduler::RotateOutgoingWebhookSecretRequest,
+        rotate_outgoing_webhook_secret_request: pb::scheduler::RotateOutgoingWebhookSecretRequest
     ) -> Result<pb::scheduler::WebhookSecretResponse> {
         let res = self
             .client
@@ -415,7 +415,11 @@ impl Scheduler {
         Ok(res.into_inner())
     }
 
-    fn get_node_id_from_tls_config(&self, tls_config: &TlsConfig) -> Result<Vec<u8>> {
+    pub fn node_id(&self) -> Vec<u8> {
+        return self.node_id.clone();
+    }
+
+    fn get_node_id_from_tls_config(tls_config: &TlsConfig) -> Result<Vec<u8>> {
         let subject_common_name =
             match &tls_config.x509_cert {
                 Some(x) => match x.subject_common_name() {
@@ -467,6 +471,12 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(sched.schedule::<node::ClnClient>(tls_config).await.is_err_and(|e| e.to_string().contains("The node_id defined on the TlsConfig does not match the node_id the scheduler was initialized with")));
+        assert!(
+            sched
+            .is_err_and(|e| 
+                e.to_string()
+                .contains("The node_id defined on the TlsConfig does not match the node_id the scheduler was initialized with")
+            )
+        );
     }
 }

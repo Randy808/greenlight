@@ -2,6 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use log::debug;
 use std::path::Path;
 use tonic::transport::{Certificate, ClientTlsConfig, Identity};
+use x509_certificate::X509Certificate;
 
 const CA_RAW: &[u8] = include_str!("../../tls/ca.pem").as_bytes();
 const NOBODY_CRT: &[u8] = include_str!(env!("GL_NOBODY_CRT")).as_bytes();
@@ -49,16 +50,16 @@ impl TlsConfig {
         Self::with(nobody_crt, nobody_key, ca_crt)
     }
     pub fn with<V: AsRef<[u8]>>(crt: V, key: V, ca_crt: V) -> Result<Self> {
-        let config = ClientTlsConfig::new()
-            .ca_certificate(Certificate::from_pem(ca_crt.as_ref()))
-            .identity(Identity::from_pem(crt, key.as_ref()));
-
-        let x509_cert = match X509Certificate::from_pem(crt.as_ref()) {
+        let x509_cert = match X509Certificate::from_pem(&crt) {
             Ok(x) => x,
             Err(e) => {
                 return Err(anyhow!("Failed to parse x509 certificate: {}", e));
             }
         };
+
+        let config = ClientTlsConfig::new()
+            .ca_certificate(Certificate::from_pem(ca_crt.as_ref()))
+            .identity(Identity::from_pem(crt, key.as_ref()));
         
         Ok(TlsConfig {
             inner: config,

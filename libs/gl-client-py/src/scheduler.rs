@@ -22,18 +22,16 @@ pub struct Scheduler {
 #[pymethods]
 impl Scheduler {
     #[new]
-    fn new(node_id: Vec<u8>, network: String, tls: crate::tls::TlsConfig) -> PyResult<Scheduler> {
+    fn new(network: String, tls: crate::tls::TlsConfig) -> PyResult<Scheduler> {
         let network: Network = network
             .parse()
             .map_err(|_| PyValueError::new_err("Error parsing the network"))?;
 
-        let id = node_id.clone();
         let uri = gl_client::utils::scheduler_uri();
 
         let ctls = tls.clone();
         let res = exec(async move {
             gl_client::scheduler::Scheduler::builder(
-                id,
                 network,
                 ctls.inner
             )?
@@ -48,7 +46,7 @@ impl Scheduler {
         };
 
         Ok(Scheduler {
-            node_id,
+            node_id: inner.node_id(),
             inner,
             tls,
         })

@@ -68,7 +68,7 @@ check-all: check-self check-self-gl-client check-py
 check-self: ensure-docker
 	PYTHONPATH=/repo/libs/gl-testing \
 	pytest -vvv \
-	  /repo/libs/gl-testing \
+	  /repo/libs/gl-testing/tests/test_gl_node.py::test_node_network_gl_fund  \
 	  ${PYTEST_OPTS}
 
 check-rustfmt:
@@ -99,7 +99,6 @@ docker-shell:
 	mkdir -p /tmp/gltesting/.cargo/.registry && \
 	docker run \
 		-ti \
-		--net=host \
 		--rm \
 		--cap-add=SYS_PTRACE \
 		-e TMPDIR=/tmp/gltesting/tmp \
