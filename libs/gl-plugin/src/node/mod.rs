@@ -369,7 +369,7 @@ impl Node for PluginNodeServer {
             //Loop forever
             loop {
 
-                //Wait for the next thing on the stage stream
+                //Wait for the next thing on the stage stream (which originated from hsm proxy)
                 let mut req = match stream.next().await {
                     //If there's an error then say we couldn't get the request for the stage
                     Err(e) => {

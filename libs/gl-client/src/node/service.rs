@@ -53,7 +53,7 @@ impl AuthLayer {
             .remove(0)
         };
 
-        //Create a ecdsa key paur and log that we can or retur an error that we can't
+        //Create a ecdsa key pair and log that we can or return an error that we can't
         match EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_FIXED_SIGNING, key.as_ref()) {
             Ok(_) => trace!("Successfully decoded keypair from PEM string"),
             Err(e) => return Err(anyhow!("Could not decide keypair from PEM string: {}", e)),

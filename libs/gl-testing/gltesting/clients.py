@@ -92,16 +92,26 @@ class Client:
     def node(self):
         return self.scheduler().node()
 
+    #RANDY_COMMENTED
     def register(self, configure: bool = True) -> None:
+        #G
         """A helper to register and configure the node
 
         Keyword arguments:
         configure -- Whether or not we should store the certificate in our dir
         """
+        #G_END
+        
+        #Call the scheduler's register using the configured signer on this client
+        #(the signer secret is generated in 'signer' and the client/developer tls is generated from nobody certs)
         r = self.scheduler().register(self.signer())
+        
+        #If configure is set to true
         if configure:
+            #Save the device cert we get back from register
             with (self.directory / "device.crt").open("w") as f:
                 f.write(r.device_cert)
+            #Save the device key we get back from register
             with (self.directory / "device-key.pem").open("w") as f:
                 f.write(r.device_key)
 

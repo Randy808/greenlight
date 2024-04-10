@@ -144,8 +144,8 @@ async fn process_requests(
                     //Get the file descriptor of the remote unix stream
                     let remote = remote.as_raw_fd();
 
-                    //Create a new message with the file descriptors (the first vec is an empty buff for the body
-                    //while the second is the vec of descriptors)
+                    //Redefine message (we're already matching on msg) with the file descriptors. The first arg is
+                    //for the body containing bytes 0 and 109 while the second is the vec of descriptors)
                     let msg = Message::new_with_fds(vec![0, 109], &vec![remote]);
 
                     //Clone the grpc server

@@ -17,7 +17,7 @@ The node_server is composed of 2 parts, the part of the server that uses the cor
 
 NodeServer -> WrappedNodeServer -> PluginNodeServer
 
-Both components are created using a struct called 'NodeServer' which takes in a 'WrappedNodeServer' requiring an instance of 'PluginNodeServer' for construction. The difference is the core-lightning component is wrapped with a 'NodeServer' struct defined in a *core-lightning* grpc package (generated from a protofile defined in core-lightning), and the greenlight component is wrapped with a 'NodeServer' struct defined in a *greenlight* grpc package. There's also authentication logic defined in 'SignatureContextLayer' for requests handled by the server.
+Both components are created using a struct called 'NodeServer' which takes in a 'WrappedNodeServer' requiring an instance of 'PluginNodeServer' for construction. The difference is the core-lightning component is wrapped with a 'NodeServer' struct defined in a *core-lightning* grpc package (generated from a protofile defined in core-lightning), and the greenlight component is wrapped with a 'NodeServer' struct defined in a *greenlight* grpc package. There's also logic to capture signatures in the request defined in 'SignatureContextLayer' for requests handled by the server.
 
 The greenlight part of the node-server allows the signer to connect and wait for requests using the server's 'stream_hsm_requests' grpc method. The method listens to signing requests from the stage in a loop so it knows when to send messages to the remote signer for processing. This continues until the signer disconnects, or if the signer didn't send an ack to one of the messages it was sent.
 
